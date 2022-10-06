@@ -6,6 +6,8 @@ import numpy as np
 import vtk
 import copy
 import SimpleITK as sitk
+import platform
+from scipy.spatial.transform import Rotation as Rot
 
 from vtkmodules.vtkCommonCore import vtkPoints
 from vtkmodules.vtkCommonDataModel import (
@@ -228,19 +230,50 @@ def first_ICP(source,target,render=False):
     if render:
         vtk_render(source, target, icp)
 
+def match_landmarks(source,target):
+    labels = list(source.keys())
+    source_points = np.array([source[label] for label in labels])
+    target_points = np.array([target[label] for label in labels])
+
+    SP1 = source_points[0]
+    SP2 = source_points[1]
+
+    TP1 = target_points[0]
+    TP2 = target_points[1]
+
+    SV = SP2 - SP1
+    TV = TP2 - TP1
+
+    # Translation
+    T = TV - SV
+
+    # Rotation
+
+
+    print("Translation:{}".format(T))
+
+
 
 def main(input_file, input_json_file, gold_json_file, gold_file):
     
-    source = LoadJsonLandmarks(input_file, input_json_file)
-    target = LoadJsonLandmarks(gold_file, gold_json_file, gold=True)
+    # source = LoadJsonLandmarks(input_file, input_json_file)
+    # target = LoadJsonLandmarks(gold_file, gold_json_file, gold=True)
 
-    # Make sure the landmarks are in the same order
-    source = SortDict(source)
-    target = SortDict(target)
+    # # Make sure the landmarks are in the same order
+    # source = SortDict(source)
+    # target = SortDict(target)
 
-    first_ICP(source,target,render=False)
+    # # save the source and target landmarks arrays
+    # np.save('source.npy', source)
+    # np.save('target.npy', target)
 
-    # print()
+    # # load the source and target landmarks arrays
+    source = np.load('source.npy', allow_pickle=True).item()
+    target = np.load('target.npy', allow_pickle=True).item()
+
+    # first_ICP(source,target,render=True)
+
+    match_landmarks(source,target)
     
 
 
@@ -254,10 +287,17 @@ if __name__ == '__main__':
         elif num < 1000:
             num = "0" + str(num)
 
-        input_file = '/home/luciacev/Desktop/Luc_Anchling/DATA/ASO_CBCT/Anonymized/IC_'+num+'.nii.gz'
-        input_json_file = '/home/luciacev/Desktop/Luc_Anchling/DATA/ASO_CBCT/Anonymized/Landmarks/IC_'+num+'.mrk.json'
-        gold_json_file = '/home/luciacev/Desktop/Luc_Anchling/Projects/ASO_CBCT/data/Gold_Standard/GOLD_MAMP_02_T1.mrk.json'
-        gold_file = '/home/luciacev/Desktop/Luc_Anchling/Projects/ASO_CBCT/data/Gold_Standard/GOLD_MAMP_0002_Or_T1.nii.gz'
+        if platform.system() == "Darwin":
+            input_file = '/Users/luciacev-admin/Desktop/Luc_Anchling/Projects/ASO_CBCT/data/IC_0086.nii.gz'
+            input_json_file = '/Users/luciacev-admin/Desktop/Luc_Anchling/Projects/ASO_CBCT/data/IC_0086.mrk.json'
+            gold_file = '/Users/luciacev-admin/Desktop/Luc_Anchling/Projects/ASO_CBCT/data/MAMP_0002_Or_T1.nii.gz'
+            gold_json_file = '/Users/luciacev-admin/Desktop/Luc_Anchling/Projects/ASO_CBCT/data/MAMP_02_T1.mrk.json'
+
+        elif platform.system() == "Linux":
+            input_file = '/home/luciacev/Desktop/Luc_Anchling/DATA/ASO_CBCT/Anonymized/IC_'+num+'.nii.gz'
+            input_json_file = '/home/luciacev/Desktop/Luc_Anchling/DATA/ASO_CBCT/Anonymized/Landmarks/IC_'+num+'.mrk.json'
+            gold_json_file = '/home/luciacev/Desktop/Luc_Anchling/Projects/ASO_CBCT/data/Gold_Standard/GOLD_MAMP_02_T1.mrk.json'
+            gold_file = '/home/luciacev/Desktop/Luc_Anchling/Projects/ASO_CBCT/data/Gold_Standard/GOLD_MAMP_0002_Or_T1.nii.gz'
 
         print('IC_'+num+'.nii.gz')
         main(input_file, input_json_file, gold_json_file, gold_file)
