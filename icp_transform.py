@@ -1,13 +1,14 @@
 # https://kitware.github.io/vtk-examples/site/Python/Filtering/IterativeClosestPoints/
 # https://kitware.github.io/vtk-examples/site/Cxx/Filtering/IterativeClosestPointsTransform/
 
-import json
+# NOT VERY PROPER WAY TO DO IT BUT IT WORKS
+import warnings
+warnings.filterwarnings("ignore")
+
 import numpy as np
 import vtk
-import copy
-import SimpleITK as sitk
 import platform
-from scipy.spatial.transform import Rotation as Rot
+from utils import *
 
 from vtkmodules.vtkCommonCore import vtkPoints
 from vtkmodules.vtkCommonDataModel import (
@@ -17,190 +18,20 @@ from vtkmodules.vtkCommonDataModel import (
 )
 from vtkmodules.vtkFiltersGeneral import vtkTransformPolyDataFilter
 
-COLOR = {
-    'red': (1, 0, 0),
-    'green': (0, 1, 0),
-    'blue': (0, 0, 1),
-    'yellow': (1, 1, 0),
-    'cyan': (0, 1, 1),
-    'magenta': (1, 0, 1),
-    'white': (1, 1, 1),
-    'black': (0, 0, 0),
-}
-
-
-def LoadJsonLandmarks(img_path, ldmk_path, gold=False):
-    # print("Loading landmarks for {}...".format(img_path.split('/')[-1]))
-    spacing, origin = LoadImage(img_path)
-    # print("Spacing: {}".format(spacing))
-    # print("Origin: {}".format(origin))
-    with open(ldmk_path) as f:
-        data = json.load(f)
-    
-    markups = data["markups"][0]["controlPoints"]
-    
-    landmarks = {}
-    for markup in markups:
-        lm_ph_coord = np.array([markup["position"][2],markup["position"][1],markup["position"][0]])
-        lm_coord = ((lm_ph_coord + abs(origin)) / spacing).astype(np.float16)
-
-        landmarks[markup["label"]] = lm_coord
-    return landmarks
-
-def LoadImage(image_path):
-    img = sitk.ReadImage(image_path)
-    spacing = np.array(img.GetSpacing())
-    origin = img.GetOrigin()
-    origin = np.array([origin[2],origin[1],origin[0]])
-
-    return spacing, origin
-
-def SortDict(input_dict):
-    output_dict = {}
-    for key in sorted(input_dict.keys()):
-        output_dict[key] = input_dict[key]
-    return output_dict
-
-def save_transform_txt(transform, file_path):
-    with open(file_path, 'a') as f:
-        f.write(str(transform)+'\n')
-
-
-def PrintMatrix(transform):
-    for i in range(4):
-        for j in range(4):
-            print(transform.GetElement(i,j), end=' ')
-        print()
-
-def vtk_render(source, target, transform=None):
-    # Create a mapper and actor
-    sourceMapper = vtk.vtkPolyDataMapper()
-    sourceMapper.SetInputData(source)
-    sourceActor = vtk.vtkActor()
-    sourceActor.SetMapper(sourceMapper)
-    sourceActor.GetProperty().SetColor(COLOR['white'])
-    sourceActor.GetProperty().SetPointSize(5)
-
-    targetMapper = vtk.vtkPolyDataMapper()
-    targetMapper.SetInputData(target)
-    targetActor = vtk.vtkActor()
-    targetActor.SetMapper(targetMapper)
-    targetActor.GetProperty().SetColor(COLOR['green'])
-    targetActor.GetProperty().SetPointSize(5)
-
-    # Create a renderer, render window, and interactor
-    renderer = vtk.vtkRenderer()
-    renderWindow = vtk.vtkRenderWindow()
-    renderWindow.AddRenderer(renderer)
-    renderWindowInteractor = vtk.vtkRenderWindowInteractor()
-    renderWindowInteractor.SetRenderWindow(renderWindow)
-
-    # Add the actors to the scene
-    renderer.AddActor(sourceActor)
-    renderer.AddActor(targetActor)
-    renderer.SetBackground(0.1, 0.2, 0.4) # Background color dark blue
-
-    # Apply transform
-    if transform is not None:
-        transformFilter = vtkTransformPolyDataFilter()
-        transformFilter.SetInputData(source)
-        transformFilter.SetTransform(transform)
-        transformFilter.Update()
-
-        # Create a mapper and actor
-        transformMapper = vtk.vtkPolyDataMapper()
-        transformMapper.SetInputData(transformFilter.GetOutput())
-        transformActor = vtk.vtkActor()
-        transformActor.SetMapper(transformMapper)
-        transformActor.GetProperty().SetColor(COLOR['red'])
-        transformActor.GetProperty().SetPointSize(5)
-
-        renderer.AddActor(transformActor)
-    
-    # # Render and interact
-    renderWindow.Render()
-    renderWindowInteractor.Start()
-
-def vtkmatrix_to_numpy(matrix):
-    """
-    Copies the elements of a vtkMatrix4x4 into a numpy array.
-
-    :param matrix: The matrix to be copied into an array.
-    :type matrix: vtk.vtkMatrix4x4
-    :rtype: numpy.ndarray
-    """
-    m = np.ones((4, 4))
-    for i in range(4):
-        for j in range(4):
-            m[i, j] = matrix.GetElement(i, j)
-    return m
-
-def ComputeErrorInPercent(source, target, transform):
-    """
-    Computes the error of the transform.
-
-    :param source: The source points.
-    :type source: vtk.vtkPoints
-    :param target: The target points.
-    :type target: vtk.vtkPoints
-    :param transform: The transform to be evaluated.
-    :type transform: vtk.vtkTransform
-    :rtype: float
-    """
-    # Create a transform filter
-    transformFilter = vtkTransformPolyDataFilter()
-    transformFilter.SetInputData(source)
-    transformFilter.SetTransform(transform)
-    transformFilter.Update()
-
-    # Compute the error
-    sourcePoints = source.GetPoints()
-    targetPoints = target.GetPoints()
-    transformPoints = transformFilter.GetOutput().GetPoints()
-    error = 0.0
-    for i in range(sourcePoints.GetNumberOfPoints()):
-        error += np.linalg.norm(np.array(transformPoints.GetPoint(i)) - np.array(targetPoints.GetPoint(i)))
-    error /= sourcePoints.GetNumberOfPoints()
-    return error / np.linalg.norm(np.array(source.GetCenter()) - np.array(target.GetCenter())) * 100
-
-
-
+cross = lambda x,y:np.cross(x,y) # to avoid unreachable code error on np.cross function
 
 def ICP_Transform(source, target):
-    # ICP Transform
+
     # ============ create source points ==============
-    # print("Creating source points...")   
-    sourcePoints = vtkPoints()
-    sourceVertices = vtkCellArray()
-    
-    for i,landmark in enumerate(source.keys()):
-        sp_id = sourcePoints.InsertNextPoint(source[landmark])
-        sourceVertices.InsertNextCell(1)
-        sourceVertices.InsertCellPoint(sp_id)
-        
-    source = vtkPolyData()
-    source.SetPoints(sourcePoints)
-    source.SetVerts(sourceVertices)
+    source = ConvertToVTKPoints(source)
 
     # ============ create target points ==============
-    # print("Creating target points...")
-    targetPoints = vtkPoints()
-    targetVertices = vtkCellArray()
-
-    for i,landmark in enumerate(target.keys()):
-        tp_id = targetPoints.InsertNextPoint(target[landmark])
-        targetVertices.InsertNextCell(1)
-        targetVertices.InsertCellPoint(tp_id)
-    
-    target = vtkPolyData()
-    target.SetPoints(targetPoints)
-    target.SetVerts(targetVertices)
+    target = ConvertToVTKPoints(target)
 
     # ============ render source and target points ==============
     # vtk_render(source, target)
 
     # ============ create ICP transform ==============
-    # print("Creating ICP transform...")
     icp = vtkIterativeClosestPointTransform()
     icp.SetSource(source)
     icp.SetTarget(target)
@@ -210,49 +41,147 @@ def ICP_Transform(source, target):
     icp.Modified()
     icp.Update()
 
+    # print("Number of iterations: {}".format(icp.GetNumberOfIterations()))
+
     # ============ apply ICP transform ==============
-    # print("Applying ICP transform...")
     transformFilter = vtkTransformPolyDataFilter()
     transformFilter.SetInputData(source)
     transformFilter.SetTransform(icp)
     transformFilter.Update()
 
-    
-    
-
-
     return source,target,icp
 
 def first_ICP(source,target,render=False):
     source,target,icp = ICP_Transform(source,target)
-    print("ICP error:{:.2f}%".format(ComputeErrorInPercent(source, target, icp)))
-    PrintMatrix(icp.GetMatrix())
+    # print("ICP error:{:.2f}%".format(ComputeErrorInPercent(source, target, icp)))
+    # PrintMatrix(icp.GetMatrix())
     if render:
-        vtk_render(source, target, icp)
+        vtk_render(source, target, transform=icp)
 
-def match_landmarks(source,target):
+def ApplyTranslation(source,transform):
+    sourcee = source.copy()
+    for key in sourcee.keys():
+        sourcee[key] = sourcee[key] + transform
+    return sourcee
+
+
+def AngleAndAxisVectors(v1, v2):
+    # Compute angle between two vectors
+    v1_u = v1 / np.amax(v1)
+    v2_u = v2 / np.amax(v2)
+    angle = np.arccos(np.dot(v1_u, v2_u) / (np.linalg.norm(v1_u) * np.linalg.norm(v2_u)))
+    axis = cross(v1_u, v2_u)
+    #axis = axis / np.linalg.norm(axis)
+    return angle,axis
+
+def RotationMatrix(angle,axis):
+    # Compute Rotation matrix
+    R = np.zeros((3, 3))
+    R[0, 0] = np.cos(angle) + axis[0] ** 2 * (1 - np.cos(angle))
+    R[0, 1] = axis[0] * axis[1] * (1 - np.cos(angle)) - axis[2] * np.sin(angle)
+    R[0, 2] = axis[0] * axis[2] * (1 - np.cos(angle)) + axis[1] * np.sin(angle)
+    R[1, 0] = axis[1] * axis[0] * (1 - np.cos(angle)) + axis[2] * np.sin(angle)
+    R[1, 1] = np.cos(angle) + axis[1] ** 2 * (1 - np.cos(angle))
+    R[1, 2] = axis[1] * axis[2] * (1 - np.cos(angle)) - axis[0] * np.sin(angle)
+    R[2, 0] = axis[2] * axis[0] * (1 - np.cos(angle)) - axis[1] * np.sin(angle)
+    R[2, 1] = axis[2] * axis[1] * (1 - np.cos(angle)) + axis[0] * np.sin(angle)
+    R[2, 2] = np.cos(angle) + axis[2] ** 2 * (1 - np.cos(angle))
+    return R
+
+def rotation_matrix(axis, theta):
+    """
+    Return the rotation matrix associated with counterclockwise rotation about
+    the given axis by theta radians.
+    """
+    import math
+    axis = np.asarray(axis)
+    axis = axis / np.linalg.norm(axis)
+    a = math.cos(theta / 2.0)
+    b, c, d = -axis * math.sin(theta / 2.0)
+    aa, bb, cc, dd = a * a, b * b, c * c, d * d
+    bc, ad, ac, ab, bd, cd = b * c, a * d, a * c, a * b, b * d, c * d
+    return np.array([[aa + bb - cc - dd, 2 * (bc + ad), 2 * (bd - ac)],
+                     [2 * (bc - ad), aa + cc - bb - dd, 2 * (cd + ab)],
+                     [2 * (bd + ac), 2 * (cd - ab), aa + dd - bb - cc]])
+
+
+def ApplyRotation(source,R):
+    sourcee = source.copy()
+    for key in sourcee.keys():
+        sourcee[key] = np.dot(R,sourcee[key])
+    return sourcee
+
+def InitICP(source,target):
     labels = list(source.keys())
-    source_points = np.array([source[label] for label in labels])
-    target_points = np.array([target[label] for label in labels])
+    Actors = []
 
-    SP1 = source_points[0]
-    SP2 = source_points[1]
+    # Pick a random landmark
+    firstpick = labels[np.random.randint(0, len(labels))]
+    print("First pick: {}".format(firstpick))
+    SPt1 = source[firstpick]
+    TPt1 = target[firstpick]
 
-    TP1 = target_points[0]
-    TP2 = target_points[1]
+    Actors.extend(list(CreateActorLabel(source,color='white',convert_to_vtk=True)))  # Original source landmarks
+    Actors.extend(list(CreateActorLabel(target,color='green',convert_to_vtk=True))) # Original target landmarks
 
-    SV = SP2 - SP1
-    TV = TP2 - TP1
+    # Compute Translation transform
+    T = TPt1 - SPt1
+    
+    # Apply Translation transform
+    source = ApplyTranslation(source,T)
+    # Actors.extend(list(CreateActorLabel(source,color='red',convert_to_vtk=True))) # Translated source landmarks
+    SPt1 = source[firstpick]
 
-    # Translation
-    T = TV - SV
+    # Pick another random landmark
+    while True:
+        secondpick = labels[np.random.randint(0, len(labels))]
+        SPt2 = source[secondpick]
+        TPt2 = target[secondpick]
 
-    # Rotation
+        # Compute Rotation angle and vector
+        v1 = abs(SPt2 - SPt1)
+        v2 = abs(TPt2 - TPt1)
+        angle,axis = AngleAndAxisVectors(v2, v1)
+        if secondpick != firstpick and angle != 0:
+            break
+    print("Second pick: {}".format(secondpick))
+    
+    print("Angle: {:.4f}".format(angle))
+    # print("Angle: {:.2f}°".format(angle*180/np.pi))
 
+    # Compute Rotation matrix
+    R = rotation_matrix(axis,angle)
+    # Apply Rotation transform
+    source = ApplyRotation(source,R)
+    Actors.extend(list(CreateActorLabel(source,color='yellow',convert_to_vtk=True))) # Rotated source landmarks
+    
+    # print("Rotation:\n{}".format(R))
+    
+    # Pick another random landmark
+    while True:
+        thirdpick = labels[np.random.randint(0, len(labels))]
+        SPt3 = source[thirdpick]
+        TPt3 = target[thirdpick]
+        if thirdpick != firstpick and thirdpick != secondpick:
+            break
+    print("Third pick: {}".format(thirdpick))
 
-    print("Translation:{}".format(T))
+    # Compute Rotation angle
+    v1 = abs(SPt3 - source[firstpick])
+    v2 = abs(TPt3 - TPt1)
+    angle,axis = AngleAndAxisVectors(v2, v1)
+    print("Angle: {:.4f}".format(angle))
 
+    # Compute Rotation matrix
+    R = rotation_matrix(abs(source[secondpick] - source[firstpick]),angle)
 
+    # Apply Rotation transform
+    source = ApplyRotation(source,R)
+    Actors.extend(list(CreateActorLabel(source,color='orange',convert_to_vtk=True))) # Rotated source landmarks
+
+    # RenderWindow(Actors)
+
+    return source
 
 def main(input_file, input_json_file, gold_json_file, gold_file):
     
@@ -264,21 +193,20 @@ def main(input_file, input_json_file, gold_json_file, gold_file):
     # target = SortDict(target)
 
     # # save the source and target landmarks arrays
-    # np.save('source.npy', source)
-    # np.save('target.npy', target)
+    # np.save('cache/source.npy', source)
+    # np.save('cache/target.npy', target)
 
-    # # load the source and target landmarks arrays
-    source = np.load('source.npy', allow_pickle=True).item()
-    target = np.load('target.npy', allow_pickle=True).item()
+    # load the source and target landmarks arrays
+    source = np.load('cache/source.npy', allow_pickle=True).item()
+    target = np.load('cache/target.npy', allow_pickle=True).item()
 
-    # first_ICP(source,target,render=True)
 
-    match_landmarks(source,target)
-    
+    source = InitICP(source,target)
 
+    first_ICP(source,target,render=True)
 
 if __name__ == '__main__':
-    for num in [86]:#,96,34]:
+    for num in [3]:#,96,34]:
         num
         if num < 10:
             num = "000" + str(num)
@@ -299,7 +227,7 @@ if __name__ == '__main__':
             gold_json_file = '/home/luciacev/Desktop/Luc_Anchling/Projects/ASO_CBCT/data/Gold_Standard/GOLD_MAMP_02_T1.mrk.json'
             gold_file = '/home/luciacev/Desktop/Luc_Anchling/Projects/ASO_CBCT/data/Gold_Standard/GOLD_MAMP_0002_Or_T1.nii.gz'
 
-        print('IC_'+num+'.nii.gz')
+        # print('IC_'+num+'.nii.gz')
         main(input_file, input_json_file, gold_json_file, gold_file)
 
 
