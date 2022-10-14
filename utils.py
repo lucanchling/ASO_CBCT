@@ -1,10 +1,18 @@
+'''
+8888888 888b     d888 8888888b.   .d88888b.  8888888b.  88888888888  .d8888b.  
+  888   8888b   d8888 888   Y88b d88P" "Y88b 888   Y88b     888     d88P  Y88b 
+  888   88888b.d88888 888    888 888     888 888    888     888     Y88b.      
+  888   888Y88888P888 888   d88P 888     888 888   d88P     888      "Y888b.   
+  888   888 Y888P 888 8888888P"  888     888 8888888P"      888         "Y88b. 
+  888   888  Y8P  888 888        888     888 888 T88b       888           "888 
+  888   888   "   888 888        Y88b. .d88P 888  T88b      888     Y88b  d88P 
+8888888 888       888 888         "Y88888P"  888   T88b     888      "Y8888P"  
+'''
 
 import json
 import numpy as np
 import vtk
-import copy
 import SimpleITK as sitk
-import platform
 
 from vtkmodules.vtkCommonCore import vtkPoints
 from vtkmodules.vtkCommonDataModel import (
@@ -14,6 +22,19 @@ from vtkmodules.vtkCommonDataModel import (
 )
 from vtkmodules.vtkFiltersGeneral import vtkTransformPolyDataFilter
 
+
+cross = lambda x,y:np.cross(x,y) # to avoid unreachable code error on np.cross function
+
+'''
+888     888        d8888 8888888b.  8888888        d8888 888888b.   888      8888888888  .d8888b.  
+888     888       d88888 888   Y88b   888         d88888 888  "88b  888      888        d88P  Y88b 
+888     888      d88P888 888    888   888        d88P888 888  .88P  888      888        Y88b.      
+Y88b   d88P     d88P 888 888   d88P   888       d88P 888 8888888K.  888      8888888     "Y888b.   
+ Y88b d88P     d88P  888 8888888P"    888      d88P  888 888  "Y88b 888      888            "Y88b. 
+  Y88o88P     d88P   888 888 T88b     888     d88P   888 888    888 888      888              "888 
+   Y888P     d8888888888 888  T88b    888    d8888888888 888   d88P 888      888        Y88b  d88P 
+    Y8P     d88P     888 888   T88b 8888888 d88P     888 8888888P"  88888888 8888888888  "Y8888P"
+'''
 
 COLOR = {
     'red': (1, 0, 0),
@@ -29,17 +50,107 @@ COLOR = {
     'orange' : (1, 0.5, 0.5),
 }
 
+'''
+888       .d88888b.         d8888 8888888b.  8888888888 8888888b.   .d8888b.  
+888      d88P" "Y88b       d88888 888  "Y88b 888        888   Y88b d88P  Y88b 
+888      888     888      d88P888 888    888 888        888    888 Y88b.      
+888      888     888     d88P 888 888    888 8888888    888   d88P  "Y888b.   
+888      888     888    d88P  888 888    888 888        8888888P"      "Y88b. 
+888      888     888   d88P   888 888    888 888        888 T88b         "888 
+888      Y88b. .d88P  d8888888888 888  .d88P 888        888  T88b  Y88b  d88P 
+88888888  "Y88888P"  d88P     888 8888888P"  8888888888 888   T88b  "Y8888P"  
+'''
+
+def LoadJsonLandmarks(img_path, ldmk_path, gold=False):
+    """
+    Load landmarks from json file
+    
+    Parameters
+    ----------
+    img_path : str
+        Path to the image
+    ldmk_path : str
+        Path to the json file
+    gold : bool, optional
+        If True, load gold standard landmarks, by default False
+    
+    Returns
+    -------
+    dict
+        Dictionary of landmarks
+    
+    Raises
+    ------
+    ValueError
+        If the json file is not valid
+    """
+    
+    # print("Loading landmarks for {}...".format(img_path.split('/')[-1]))
+    spacing, origin = LoadImage(img_path)
+    # print("Spacing: {}".format(spacing))
+    # print("Origin: {}".format(origin))
+    with open(ldmk_path) as f:
+        data = json.load(f)
+    
+    markups = data["markups"][0]["controlPoints"]
+    
+    landmarks = {}
+    for markup in markups:
+        lm_ph_coord = np.array([markup["position"][2],markup["position"][1],markup["position"][0]])
+        lm_coord = ((lm_ph_coord + abs(origin)) / spacing).astype(np.float16)
+
+        landmarks[markup["label"]] = lm_coord
+    return landmarks
+
+def LoadImage(image_path):
+    """
+    Load image from path
+    
+    Parameters
+    ----------
+    image_path : str
+        Path to the image
+    
+    Returns
+    -------
+    tuple
+        Spacing and origin of the image
+    """
+    img = sitk.ReadImage(image_path)
+    spacing = np.array(img.GetSpacing())
+    origin = img.GetOrigin()
+    origin = np.array([origin[2],origin[1],origin[0]])
+
+    return spacing, origin
+
+'''
+888b     d888 8888888888 88888888888 8888888b.  8888888  .d8888b.   .d8888b.  
+8888b   d8888 888            888     888   Y88b   888   d88P  Y88b d88P  Y88b 
+88888b.d88888 888            888     888    888   888   888    888 Y88b.      
+888Y88888P888 8888888        888     888   d88P   888   888         "Y888b.   
+888 Y888P 888 888            888     8888888P"    888   888            "Y88b. 
+888  Y8P  888 888            888     888 T88b     888   888    888       "888 
+888   "   888 888            888     888  T88b    888   Y88b  d88P Y88b  d88P 
+888       888 8888888888     888     888   T88b 8888888  "Y8888P"   "Y8888P" 
+'''
+
 def ComputeErrorInPercent(source, target, transform):
     """
     Computes the error of the transform.
+    
+    Parameters
+    ----------
+    source : dict
+        Dictionary of landmarks in the source image
+    target : dict
+        Dictionary of landmarks in the target image
+    transform : SimpleITK transform
+        Transform to be evaluated
 
-    :param source: The source points.
-    :type source: vtk.vtkPoints
-    :param target: The target points.
-    :type target: vtk.vtkPoints
-    :param transform: The transform to be evaluated.
-    :type transform: vtk.vtkTransform
-    :rtype: float
+    Returns
+    -------
+    float
+        Error in percent
     """
     # Create a transform filter
     transformFilter = vtkTransformPolyDataFilter()
@@ -57,55 +168,80 @@ def ComputeErrorInPercent(source, target, transform):
     error /= sourcePoints.GetNumberOfPoints()
     return error / np.linalg.norm(np.array(source.GetCenter()) - np.array(target.GetCenter())) * 100
 
-
-def LoadJsonLandmarks(img_path, ldmk_path, gold=False):
-    print("Loading landmarks for {}...".format(img_path.split('/')[-1]))
-    spacing, origin = LoadImage(img_path)
-    print("Spacing: {}".format(spacing))
-    print("Origin: {}".format(origin))
-    with open(ldmk_path) as f:
-        data = json.load(f)
+def ComputeMeanDistance(source, target):
+    """
+    Computes the mean distance between two point sets.
     
-    markups = data["markups"][0]["controlPoints"]
+    Parameters
+    ----------
+    source : dict
+        Source landmarks
+    target : dict
+        Target landmarks
     
-    landmarks = {}
-    for markup in markups:
-        lm_ph_coord = np.array([markup["position"][2],markup["position"][1],markup["position"][0]])
-        lm_coord = ((lm_ph_coord + abs(origin)) / spacing).astype(np.float16)
+    Returns
+    -------
+    float
+        Mean distance
+    """
+    distance = 0
+    for key in source.keys():
+        distance += np.linalg.norm(source[key] - target[key])
+    distance /= len(source.keys())
+    return distance
 
-        landmarks[markup["label"]] = lm_coord
-    return landmarks
-
-def LoadImage(image_path):
-    img = sitk.ReadImage(image_path)
-    spacing = np.array(img.GetSpacing())
-    origin = img.GetOrigin()
-    origin = np.array([origin[2],origin[1],origin[0]])
-
-    return spacing, origin
+'''
+888     888 88888888888 8888888 888       .d8888b.  
+888     888     888       888   888      d88P  Y88b 
+888     888     888       888   888      Y88b.      
+888     888     888       888   888       "Y888b.   
+888     888     888       888   888          "Y88b. 
+888     888     888       888   888            "888 
+Y88b. .d88P     888       888   888      Y88b  d88P 
+ "Y88888P"      888     8888888 88888888  "Y8888P"                                                   
+'''
 
 def SortDict(input_dict):
-    output_dict = {}
-    for key in sorted(input_dict.keys()):
-        output_dict[key] = input_dict[key]
-    return output_dict
+    """
+    Sorts a dictionary by key
+    
+    Parameters
+    ----------
+    input_dict : dict
+        Dictionary to be sorted
+    
+    Returns
+    -------
+    dict
+        Sorted dictionary
+    """
+    return {k: input_dict[k] for k in sorted(input_dict)}
 
 def PrintMatrix(transform):
+    """
+    Prints a matrix
+    
+    Parameters
+    ----------
+    transform : vtk.vtkMatrix4x4
+        Matrix to be printed
+    """
     for i in range(4):
-        for j in range(4):
-            print(transform.GetElement(i,j), end=' ')
-        print()
+        print(transform.GetElement(i,0), transform.GetElement(i,1), transform.GetElement(i,2), transform.GetElement(i,3))
+    print()
+   
 
 
-"""
- __      __  _______   _  __    _____    ______   _   _   _____    ______   _____  
- \ \    / / |__   __| | |/ /   |  __ \  |  ____| | \ | | |  __ \  |  ____| |  __ \ 
-  \ \  / /     | |    | ' /    | |__) | | |__    |  \| | | |  | | | |__    | |__) |
-   \ \/ /      | |    |  <     |  _  /  |  __|   | . ` | | |  | | |  __|   |  _  / 
-    \  /       | |    | . \    | | \ \  | |____  | |\  | | |__| | | |____  | | \ \ 
-     \/        |_|    |_|\_\   |_|  \_\ |______| |_| \_| |_____/  |______| |_|  \_\
-                                                                                   
-"""                                                                                   
+'''
+888     888 88888888888 888    d8P       .d8888b.  88888888888 888     888 8888888888 8888888888 
+888     888     888     888   d8P       d88P  Y88b     888     888     888 888        888        
+888     888     888     888  d8P        Y88b.          888     888     888 888        888        
+Y88b   d88P     888     888d88K          "Y888b.       888     888     888 8888888    8888888    
+ Y88b d88P      888     8888888b            "Y88b.     888     888     888 888        888        
+  Y88o88P       888     888  Y88b             "888     888     888     888 888        888        
+   Y888P        888     888   Y88b      Y88b  d88P     888     Y88b. .d88P 888        888        
+    Y8P         888     888    Y88b      "Y8888P"      888      "Y88888P"  888        888  
+'''                                                                                   
 
 def ConvertToVTKPoints(dict_landmarks):
     """
@@ -178,13 +314,19 @@ def CreateActorLabel(source,color='white',convert_to_vtk=False):
     return Actor,LabelActor
 
 
-def vtkmatrix_to_numpy(matrix):
+def VTKMatrixToNumpy(matrix):
     """
     Copies the elements of a vtkMatrix4x4 into a numpy array.
-
-    :param matrix: The matrix to be copied into an array.
-    :type matrix: vtk.vtkMatrix4x4
-    :rtype: numpy.ndarray
+    
+    Parameters
+    ----------
+    matrix : vtkMatrix4x4
+        Matrix to be copied
+    
+    Returns
+    -------
+    numpy array
+        Numpy array with the elements of the vtkMatrix4x4
     """
     m = np.ones((4, 4))
     for i in range(4):
@@ -193,6 +335,20 @@ def vtkmatrix_to_numpy(matrix):
     return m
 
 def RenderWindow(Actors,backgroundColor='dark blue'):
+    """
+    Create a render window with actors
+    
+    Parameters
+    ----------
+    Actors : list
+        List of actors to be rendered
+    backgroundColor : str
+        Background color of the render window
+        
+    Returns
+    -------
+    None
+    """
 
     # Create a renderer, render window, and interactor
     renderer = vtk.vtkRenderer()
@@ -209,7 +365,7 @@ def RenderWindow(Actors,backgroundColor='dark blue'):
     renderWindow.Render()
     renderWindowInteractor.Start()
 
-def vtk_render(source, target=None, transform=None, convert_to_vtk=False):
+def VTKRender(source, target=None, transform=None, convert_to_vtk=False):
     """
     Render the source and target points for ICP Transform
     
@@ -226,7 +382,7 @@ def vtk_render(source, target=None, transform=None, convert_to_vtk=False):
     
     Returns
     -------
-    None
+    VTK render window
     """
     if convert_to_vtk:
         source = ConvertToVTKPoints(source)
@@ -256,3 +412,199 @@ def vtk_render(source, target=None, transform=None, convert_to_vtk=False):
         Actors.append(transformLabelActor)
     
     RenderWindow(Actors)
+
+
+'''
+8888888  .d8888b.  8888888b.       .d8888b.  88888888888 888     888 8888888888 8888888888 
+  888   d88P  Y88b 888   Y88b     d88P  Y88b     888     888     888 888        888        
+  888   888    888 888    888     Y88b.          888     888     888 888        888        
+  888   888        888   d88P      "Y888b.       888     888     888 8888888    8888888    
+  888   888        8888888P"          "Y88b.     888     888     888 888        888        
+  888   888    888 888                  "888     888     888     888 888        888        
+  888   Y88b  d88P 888            Y88b  d88P     888     Y88b. .d88P 888        888        
+8888888  "Y8888P"  888             "Y8888P"      888      "Y88888P"  888        888 
+'''
+
+'''
+ .d8888b.  8888888 88888888888 888    d8P       .d8888b.  88888888888 888     888 8888888888 8888888888 
+d88P  Y88b   888       888     888   d8P       d88P  Y88b     888     888     888 888        888        
+Y88b.        888       888     888  d8P        Y88b.          888     888     888 888        888        
+ "Y888b.     888       888     888d88K          "Y888b.       888     888     888 8888888    8888888    
+    "Y88b.   888       888     8888888b            "Y88b.     888     888     888 888        888        
+      "888   888       888     888  Y88b             "888     888     888     888 888        888        
+Y88b  d88P   888       888     888   Y88b      Y88b  d88P     888     Y88b. .d88P 888        888        
+ "Y8888P"  8888888     888     888    Y88b      "Y8888P"      888      "Y88888P"  888        888 
+'''
+
+def ResampleImage(image_path,transform):
+    '''
+    Resample image using SimpleITK
+    
+    Parameters
+    ----------
+    image_path : String
+        Path of the image to be resampled.
+    transform : SimpleITK transform
+        Transform to be applied to the image.
+        
+    Returns
+    -------
+    SimpleITK image
+        Resampled image.
+    '''
+    image = sitk.ReadImage(image_path)
+    resample = sitk.ResampleImageFilter()
+    resample.SetReferenceImage(image)
+    resample.SetTransform(transform)
+    resample.SetInterpolator(sitk.sitkLinear)
+    resample.SetOutputSpacing(image.GetSpacing())
+    resample.SetDefaultPixelValue(0)
+    return resample.Execute(image)
+
+def ConvertTransformMatrixToSimpleITK(transformMatrix):
+    '''
+    Convert transform matrix to SimpleITK transform
+    
+    Parameters
+    ----------
+    transformMatrix : vtkMatrix4x4
+        Transform matrix to be converted.
+    
+    Returns
+    -------
+    SimpleITK transform
+        SimpleITK transform.
+    '''
+    transform = sitk.VersorRigid3DTransform()
+    transform.SetMatrix(transformMatrix[:3,:3].flatten())
+    # transform.SetTranslation(transformMatrix[:3,3]*0.1)
+    return transform
+
+'''
+88888888888 8888888b.         d8888 888b    888  .d8888b.  8888888888 .d88888b.  8888888b.  888b     d888  .d8888b.  
+    888     888   Y88b       d88888 8888b   888 d88P  Y88b 888       d88P" "Y88b 888   Y88b 8888b   d8888 d88P  Y88b 
+    888     888    888      d88P888 88888b  888 Y88b.      888       888     888 888    888 88888b.d88888 Y88b.      
+    888     888   d88P     d88P 888 888Y88b 888  "Y888b.   8888888   888     888 888   d88P 888Y88888P888  "Y888b.   
+    888     8888888P"     d88P  888 888 Y88b888     "Y88b. 888       888     888 8888888P"  888 Y888P 888     "Y88b. 
+    888     888 T88b     d88P   888 888  Y88888       "888 888       888     888 888 T88b   888  Y8P  888       "888 
+    888     888  T88b   d8888888888 888   Y8888 Y88b  d88P 888       Y88b. .d88P 888  T88b  888   "   888 Y88b  d88P 
+    888     888   T88b d88P     888 888    Y888  "Y8888P"  888        "Y88888P"  888   T88b 888       888  "Y8888P" 
+'''
+
+def ApplyTranslation(source,transform):
+    '''
+    Apply translation to source dictionary of landmarks
+
+    Parameters
+    ----------
+    source : Dictionary
+        Dictionary containing the source landmarks.
+    transform : numpy array
+        Translation to be applied to the source.
+    
+    Returns
+    -------
+    Dictionary
+        Dictionary containing the translated source landmarks.
+    '''
+    sourcee = source.copy()
+    for key in sourcee.keys():
+        sourcee[key] = sourcee[key] + transform
+    return sourcee
+
+def ApplyTransform(source,transform):
+    '''
+    Apply a transform matrix to a set of landmarks
+    
+    Parameters
+    ----------
+    source : dict
+        Dictionary of landmarks
+    transform : np.array
+        Transform matrix
+    
+    Returns
+    -------
+    source : dict
+        Dictionary of transformed landmarks
+    '''
+    Translation = transform[:3,3]
+    Rotation = transform[:3,:3]
+    for key in source.keys():
+        source[key] = Rotation @ source[key] + Translation
+    return source
+
+def RotationMatrix(axis, theta):
+    """
+    Return the rotation matrix associated with counterclockwise rotation about
+    the given axis by theta radians.
+
+    Parameters
+    ----------
+    axis : np.array
+        Axis of rotation
+    theta : float
+        Angle of rotation in radians
+    
+    Returns
+    -------
+    np.array
+        Rotation matrix
+    """
+    import math
+    axis = np.asarray(axis)
+    axis = axis / np.linalg.norm(axis)
+    a = math.cos(theta / 2.0)
+    b, c, d = -axis * math.sin(theta / 2.0)
+    aa, bb, cc, dd = a * a, b * b, c * c, d * d
+    bc, ad, ac, ab, bd, cd = b * c, a * d, a * c, a * b, b * d, c * d
+    return np.array([[aa + bb - cc - dd, 2 * (bc + ad), 2 * (bd - ac)],
+                     [2 * (bc - ad), aa + cc - bb - dd, 2 * (cd + ab)],
+                     [2 * (bd + ac), 2 * (cd - ab), aa + dd - bb - cc]])
+
+def ApplyRotation(source,R):
+    '''
+    Apply a rotation matrix to a set of landmarks
+    
+    Parameters
+    ----------
+    source : dict
+        Dictionary of landmarks
+    R : np.array
+        Rotation matrix
+    
+    Returns
+    -------
+    source : dict
+        Dictionary of transformed landmarks
+    '''
+    sourcee = source.copy()
+    for key in sourcee.keys():
+        sourcee[key] = np.dot(R,sourcee[key])
+    return sourcee
+
+def AngleAndAxisVectors(v1, v2):
+    '''
+    Return the angle and the axis of rotation between two vectors
+    
+    Parameters
+    ----------
+    v1 : numpy array
+        First vector
+    v2 : numpy array
+        Second vector
+    
+    Returns
+    -------
+    angle : float
+        Angle between the two vectors
+    axis : numpy array
+        Axis of rotation between the two vectors
+    '''
+    # Compute angle between two vectors
+    v1_u = v1 / np.amax(v1)
+    v2_u = v2 / np.amax(v2)
+    angle = np.arccos(np.dot(v1_u, v2_u) / (np.linalg.norm(v1_u) * np.linalg.norm(v2_u)))
+    axis = cross(v1_u, v2_u)
+    #axis = axis / np.linalg.norm(axis)
+    return angle,axis

@@ -3,3 +3,5 @@ data
 *.txt
 cache
 __pycache__
+*.nii.gz
+*.json
