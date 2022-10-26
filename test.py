@@ -2,45 +2,37 @@
 
 import SimpleITK as sitk
 import numpy as np
-import itk
+import sys
+from utils import ConvertTransformMatrixToSimpleITK
+
 # Read image
 img = sitk.ReadImage('/home/luciacev/Desktop/Luc_Anchling/DATA/ASO_CBCT/Anonymized/IC_0005.nii.gz')
-npimg = sitk.GetArrayFromImage(img)
-
+fixed = sitk.ReadImage('/home/luciacev/Desktop/Luc_Anchling/Projects/ASO_CBCT/data/Gold_Standard/GOLD_MAMP_0002_Or_T1.nii.gz')
+ 
 dim = img.GetDimension()
-spacing = img.GetSpacing()
-origin = img.GetOrigin()
+spacing = np.array(img.GetSpacing())
+origin = np.array(img.GetOrigin())
 direction = img.GetDirection()
-size = img.GetSize()
+direction = np.array(direction).reshape(dim, dim)
+size = np.array(img.GetSize())
 
-def transform_point(transform, point):
-    print('Point: {} has been transformed to: {}'.format(point, transform.TransformPoint(point)))
+def PhysicalPointToIndex(physical_point, origin, spacing, direction):
+    '''
+    Convert a physical point to an index with the direction taken into account.
+    '''
+    return np.round((np.dot(np.linalg.inv(direction), physical_point - origin) / spacing)).astype(int)
 
-# trans = [-15.0, 50.0, -25.0]
+TransformMatrix = np.load('cache/TransformMatrixFinal.npy', allow_pickle=True)
+transform = ConvertTransformMatrixToSimpleITK(TransformMatrix)
 
-# npimg = npimg + trans
+resample = sitk.ResampleImageFilter()
+resample.SetReferenceImage(fixed)
+resample.SetInterpolator(sitk.sitkLinear)
+transform = sitk.TranslationTransform(dim)
+transform.SetOffset([-266.0, -280.0, 13.0])
+resample.SetTransform(transform)
+out = resample.Execute(img)
 
-translation = sitk.TranslationTransform(dim)
-offset = [2] * dim
-translation.SetOffset(offset)
-translation.SetParameters((0, 150, 0))
-
-# transform_point(translation, [1,0,2])
-
-
-def resample(image, transform):
-    refImage = image
-    interpolator = sitk.sitkLinear
-    defaultPixelValue = 0.0
-    return sitk.Resample(image, refImage, transform, interpolator, defaultPixelValue)
-
-def itk_resample(image, transform):
-    refImage = image
-    interpolator = itk.LinearInterpolateImageFunction.New(image)
-    defaultPixelValue = 0.0
-    return itk.Resample(image, refImage, transform, interpolator, defaultPixelValue)
-
-resampled = itk_resample(img, translation)
-# resampled = sitk.GetImageFromArray(npimg)
-sitk.WriteImage(resampled, 'data/output/resampled.nii.gz')
-print('Done')
+print("Writing output...")
+sitk.WriteImage(out, '/home/luciacev/Desktop/Luc_Anchling/Projects/ASO_CBCT/data/output/outputtest.nii.gz')
+print("Done")

@@ -61,14 +61,14 @@ COLOR = {
 88888888  "Y88888P"  d88P     888 8888888P"  8888888888 888   T88b  "Y8888P"  
 '''
 
-def LoadJsonLandmarks(img_path, ldmk_path, gold=False):
+def LoadJsonLandmarks(img, ldmk_path, gold=False):
     """
     Load landmarks from json file
     
     Parameters
     ----------
-    img_path : str
-        Path to the image
+    img : sitk.Image
+        Image to which the landmarks belong
     ldmk_path : str
         Path to the json file
     gold : bool, optional
@@ -84,9 +84,11 @@ def LoadJsonLandmarks(img_path, ldmk_path, gold=False):
     ValueError
         If the json file is not valid
     """
-    
     # print("Loading landmarks for {}...".format(img_path.split('/')[-1]))
-    spacing, origin = LoadImage(img_path)
+    spacing = np.array(img.GetSpacing())
+    origin = img.GetOrigin()
+    origin = np.array([origin[0],origin[1],origin[2]])
+    # origin = np.array(origin)
     # print("Spacing: {}".format(spacing))
     # print("Origin: {}".format(origin))
     with open(ldmk_path) as f:
@@ -96,32 +98,12 @@ def LoadJsonLandmarks(img_path, ldmk_path, gold=False):
     
     landmarks = {}
     for markup in markups:
-        lm_ph_coord = np.array([markup["position"][2],markup["position"][1],markup["position"][0]])
-        lm_coord = ((lm_ph_coord + abs(origin)) / spacing).astype(np.float16)
-
+        lm_ph_coord = np.array([markup["position"][0],markup["position"][1],markup["position"][2]])
+        #lm_coord = ((lm_ph_coord - origin) / spacing).astype(np.float16)
+        lm_coord = lm_ph_coord.astype(np.float64)
         landmarks[markup["label"]] = lm_coord
     return landmarks
 
-def LoadImage(image_path):
-    """
-    Load image from path
-    
-    Parameters
-    ----------
-    image_path : str
-        Path to the image
-    
-    Returns
-    -------
-    tuple
-        Spacing and origin of the image
-    """
-    img = sitk.ReadImage(image_path)
-    spacing = np.array(img.GetSpacing())
-    origin = img.GetOrigin()
-    origin = np.array([origin[2],origin[1],origin[0]])
-
-    return spacing, origin
 
 '''
 888b     d888 8888888888 88888888888 8888888b.  8888888  .d8888b.   .d8888b.  
@@ -354,6 +336,7 @@ def RenderWindow(Actors,backgroundColor='dark blue'):
     renderer = vtk.vtkRenderer()
     renderWindow = vtk.vtkRenderWindow()
     renderWindow.AddRenderer(renderer)
+    renderWindow.SetSize(800, 800)
     renderWindowInteractor = vtk.vtkRenderWindowInteractor()
     renderWindowInteractor.SetRenderWindow(renderWindow)
 
@@ -436,14 +419,16 @@ Y88b  d88P   888       888     888   Y88b      Y88b  d88P     888     Y88b. .d88
  "Y8888P"  8888888     888     888    Y88b      "Y8888P"      888      "Y88888P"  888        888 
 '''
 
-def ResampleImage(image_path,transform):
+def ResampleImage(image, target, transform):
     '''
     Resample image using SimpleITK
     
     Parameters
     ----------
-    image_path : String
-        Path of the image to be resampled.
+    image : SimpleITK.Image
+        Image to be resampled
+    target : SimpleITK.Image
+        Target image
     transform : SimpleITK transform
         Transform to be applied to the image.
         
@@ -452,13 +437,10 @@ def ResampleImage(image_path,transform):
     SimpleITK image
         Resampled image.
     '''
-    image = sitk.ReadImage(image_path)
     resample = sitk.ResampleImageFilter()
-    resample.SetReferenceImage(image)
+    resample.SetReferenceImage(target)
     resample.SetTransform(transform)
     resample.SetInterpolator(sitk.sitkLinear)
-    resample.SetOutputSpacing(image.GetSpacing())
-    resample.SetDefaultPixelValue(0)
     return resample.Execute(image)
 
 def ConvertTransformMatrixToSimpleITK(transformMatrix):
@@ -475,11 +457,35 @@ def ConvertTransformMatrixToSimpleITK(transformMatrix):
     SimpleITK transform
         SimpleITK transform.
     '''
-    transform = sitk.VersorRigid3DTransform()
-    transform.SetMatrix(transformMatrix[:3,:3].flatten())
-    # transform.SetTranslation(transformMatrix[:3,3]*0.1)
+    
+    translation = sitk.TranslationTransform(3)
+    translation.SetOffset(transformMatrix[0:3,3].tolist())
+
+    rotation = sitk.Euler3DTransform()
+    rotation.SetParameters(transformMatrix[0:3,0:3].flatten().tolist())
+    # rotation.SetMatrix(transformMatrix[0:3,0:3].flatten().tolist())
+
+    transform = sitk.CompositeTransform([rotation, translation])
+
     return transform
 
+def isOrthogonal(matrix, tolerance=1e-8):
+    '''
+    Check if a matrix is orthogonal
+    
+    Parameters
+    ----------
+    matrix : numpy array
+        Matrix to be checked.
+    tolerance : float
+        Tolerance for checking the orthogonality.
+    
+    Returns
+    -------
+    bool
+        True if the matrix is orthogonal, False otherwise.
+    '''
+    return np.allclose(matrix.dot(matrix.T), np.eye(matrix.shape[0]), atol=tolerance)
 '''
 88888888888 8888888b.         d8888 888b    888  .d8888b.  8888888888 .d88888b.  8888888b.  888b     d888  .d8888b.  
     888     888   Y88b       d88888 8888b   888 d88P  Y88b 888       d88P" "Y88b 888   Y88b 8888b   d8888 d88P  Y88b 
@@ -528,11 +534,17 @@ def ApplyTransform(source,transform):
     source : dict
         Dictionary of transformed landmarks
     '''
-    Translation = transform[:3,3]
-    Rotation = transform[:3,:3]
-    for key in source.keys():
-        source[key] = Rotation @ source[key] + Translation
-    return source
+    # Translation = transform[:3,3]
+    # Rotation = transform[:3,:3]
+    # for key in source.keys():
+    #     source[key] = Rotation @ source[key] + Translation
+    # return source
+
+    sourcee = source.copy()
+    for key in sourcee.keys():
+        sourcee[key] = transform @ np.append(sourcee[key],1)
+        sourcee[key] = sourcee[key][:3]
+    return sourcee
 
 def RotationMatrix(axis, theta):
     """
@@ -580,7 +592,7 @@ def ApplyRotation(source,R):
     '''
     sourcee = source.copy()
     for key in sourcee.keys():
-        sourcee[key] = np.dot(R,sourcee[key])
+        sourcee[key] = R @ sourcee[key]
     return sourcee
 
 def AngleAndAxisVectors(v1, v2):

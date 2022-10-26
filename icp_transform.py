@@ -7,6 +7,7 @@ import numpy as np
 import vtk
 import platform
 from utils import *
+import time
 
 '''
 8888888  .d8888b.  8888888b.      
@@ -34,7 +35,7 @@ def ICP_Transform(source, target):
     icp.SetSource(source)
     icp.SetTarget(target)
     icp.GetLandmarkTransform().SetModeToRigidBody()
-    icp.SetMaximumNumberOfIterations(100)
+    icp.SetMaximumNumberOfIterations(1000)
     icp.StartByMatchingCentroidsOn()
     icp.Modified()
     icp.Update()
@@ -69,7 +70,11 @@ def first_ICP(source,target,render=False):
 '''
 
 def InitICP(source,target,render=False, Print=False, BestLMList=None, search=False):
-    TransformMatrix = np.eye(4)
+    TransformList = []
+    # TransformMatrix = np.eye(4)
+    TranslationTransformMatrix = np.eye(4)
+    RotationTransformMatrix = np.eye(4)
+
     labels = list(source.keys())
     if render:
         Actors = []
@@ -79,31 +84,32 @@ def InitICP(source,target,render=False, Print=False, BestLMList=None, search=Fal
             print("Best Landmarks are: {},{},{}".format(firstpick, secondpick, thirdpick))
     # print("Mean Distance:{:.2f}".format(ComputeMeanDistance(source, target)))
 
-    # Pick a random landmark
+    # ============ Pick a Random Landmark ==============
     if BestLMList is None:
         firstpick = labels[np.random.randint(0, len(labels))]
         # firstpick = 'LOr'
     if Print:
         print("First pick: {}".format(firstpick))
-    SPt1 = source[firstpick]
-    TPt1 = target[firstpick]
 
     if render:
         Actors.extend(list(CreateActorLabel(source,color='white',convert_to_vtk=True)))  # Original source landmarks
         Actors.extend(list(CreateActorLabel(target,color='green',convert_to_vtk=True))) # Original target landmarks
-
-    # Compute Translation transform
-    T = TPt1 - SPt1
-    TransformMatrix[:3, 3] = T
-    # Apply Translation transform
+    # ============ Compute Translation Transform ==============
+    T = target[firstpick] - source[firstpick]
+    TranslationTransformMatrix[:3, 3] = T
+    Translationsitk = sitk.TranslationTransform(3)
+    Translationsitk.SetOffset(T.tolist())
+    TransformList.append(Translationsitk)
+    # ============ Apply Translation Transform ==============
     source = ApplyTranslation(source,T)
+    # source = ApplyTransform(source, TranslationTransformMatrix)
+
     if render:
         # Actors.extend(list(CreateActorLabel(source,color='red',convert_to_vtk=True))) # Translated source landmarks
         pass
     # print("Mean Distance:{:.2f}".format(ComputeMeanDistance(source, target)))
-    SPt1 = source[firstpick]
 
-    # Pick another random landmark
+    # ============ Pick Another Random Landmark ==============
     if BestLMList is None:
         while True:
             secondpick = labels[np.random.randint(0, len(labels))]
@@ -112,29 +118,35 @@ def InitICP(source,target,render=False, Print=False, BestLMList=None, search=Fal
                 break
     if Print:
         print("Second pick: {}".format(secondpick))
-    
-    SPt2 = source[secondpick]
-    TPt2 = target[secondpick]
-    # Compute Rotation angle and vector
-    v1 = abs(SPt2 - SPt1)
-    v2 = abs(TPt2 - TPt1)
+
+    # ============ Compute Rotation Angle and Axis ==============
+    v1 = abs(source[secondpick] - source[firstpick])
+    v2 = abs(target[secondpick] - target[firstpick])
     angle,axis = AngleAndAxisVectors(v2, v1)
 
     # print("Angle: {:.4f}".format(angle))
     # print("Angle: {:.2f}°".format(angle*180/np.pi))
 
-    # Compute Rotation matrix
+    # ============ Compute Rotation Transform ==============
     R = RotationMatrix(axis,angle)
-    TransformMatrix[:3, :3] = R
-    # Apply Rotation transform
-    source = ApplyRotation(source,R)
+    # TransformMatrix[:3, :3] = R
+    RotationTransformMatrix[:3, :3] = R
+    Rotationsitk = sitk.VersorRigid3DTransform()
+    Rotationsitk.SetMatrix(R.flatten().tolist())
+    TransformList.append(Rotationsitk)
+    # ============ Apply Rotation Transform ==============
+    # source = ApplyRotation(source,R)
+    source = ApplyTransform(source, RotationTransformMatrix)
     if render:
         # Actors.extend(list(CreateActorLabel(source,color='yellow',convert_to_vtk=True))) # Rotated source landmarks
         pass
     # print("Mean Distance:{:.2f}".format(ComputeMeanDistance(source, target)))
     # print("Rotation:\n{}".format(R))
     
-    # Pick another random landmark
+    # ============ Compute Transform Matrix (Rotation + Translation) ==============
+    TransformMatrix = RotationTransformMatrix @ TranslationTransformMatrix
+
+    # ============ Pick another Random Landmark ==============
     if BestLMList is None:
         while True:
             thirdpick = labels[np.random.randint(0, len(labels))]
@@ -144,20 +156,26 @@ def InitICP(source,target,render=False, Print=False, BestLMList=None, search=Fal
     if Print:
         print("Third pick: {}".format(thirdpick))
     
-    SPt3 = source[thirdpick]
-    TPt3 = target[thirdpick]
-
-    # Compute Rotation angle
-    v1 = abs(SPt3 - source[firstpick])
-    v2 = abs(TPt3 - TPt1)
+    # ============ Compute Rotation Angle and Axis ==============
+    v1 = abs(source[thirdpick] - source[firstpick])
+    v2 = abs(target[thirdpick] - target[firstpick])
     angle,axis = AngleAndAxisVectors(v2, v1)
     # print("Angle: {:.4f}".format(angle))
 
-    # Compute Rotation matrix
+    # ============ Compute Rotation Transform ==============
+    RotationTransformMatrix = np.eye(4)
     R = RotationMatrix(abs(source[secondpick] - source[firstpick]),angle)
-    TransformMatrix[:3, :3] = TransformMatrix[:3, :3] @ R
-    # Apply Rotation transform
-    source = ApplyRotation(source,R)
+    RotationTransformMatrix[:3, :3] = R
+    Rotationsitk = sitk.VersorRigid3DTransform()
+    Rotationsitk.SetMatrix(R.flatten().tolist())
+    TransformList.append(Rotationsitk)
+    # ============ Apply Rotation Transform ==============
+    # source = ApplyRotation(source,R)
+    source = ApplyTransform(source, RotationTransformMatrix)
+
+    # ============ Compute Transform Matrix (Init ICP) ==============
+    TransformMatrix = RotationTransformMatrix @ TransformMatrix
+
     if render:
         Actors.extend(list(CreateActorLabel(source,color='orange',convert_to_vtk=True))) # Rotated source landmarks
     if Print:
@@ -170,7 +188,7 @@ def InitICP(source,target,render=False, Print=False, BestLMList=None, search=Fal
     if search:
         return firstpick,secondpick,thirdpick, ComputeMeanDistance(source, target)
 
-    return source, TransformMatrix
+    return source, TransformMatrix, TransformList
 
 '''
 888b     d888        d8888 8888888 888b    888 
@@ -183,50 +201,88 @@ def InitICP(source,target,render=False, Print=False, BestLMList=None, search=Fal
 888       888 d88P     888 8888888 888    Y888
 '''
 
-def main(input_file, input_json_file, gold_json_file, gold_file):
+def main(input_file, input_json_file, gold_json_file, gold_file,num):
     
-    # source = LoadJsonLandmarks(input_file, input_json_file)
-    # target = LoadJsonLandmarks(gold_file, gold_json_file, gold=True)
+    # Read input files
+    input_image = sitk.ReadImage(input_file)
+    # print('input spacing:',input_image.GetSpacing())
+    gold_image = sitk.ReadImage(gold_file)
+    # print('gold spacing:',gold_image.GetSpacing())
+    source = LoadJsonLandmarks(input_image, input_json_file)
+    target = LoadJsonLandmarks(gold_image, gold_json_file, gold=True)
 
     # Make sure the landmarks are in the same order
-    # source = SortDict(source)
-    # target = SortDict(target)
+    source = SortDict(source)
+    source_orig = source.copy()
+    target = SortDict(target)
 
     # save the source and target landmarks arrays
-    # np.save('cache/source.npy', source)
-    # np.save('cache/target.npy', target)
+    np.save('cache/source.npy', source)
+    np.save('cache/target.npy', target)
 
     # load the source and target landmarks arrays
-    source = np.load('cache/source.npy', allow_pickle=True).item()
-    target = np.load('cache/target.npy', allow_pickle=True).item()
-    Actors = list(CreateActorLabel(source, color='white', convert_to_vtk=True))
-    Actors.extend(list(CreateActorLabel(target, color='green', convert_to_vtk=True)))
+    # source = np.load('cache/source.npy', allow_pickle=True).item()
+    # target = np.load('cache/target.npy', allow_pickle=True).item()
+    # Actors = list(CreateActorLabel(source, color='white', convert_to_vtk=True)) # Original source landmarks
+    Actors = []
+    Actors.extend(list(CreateActorLabel(target, color='green', convert_to_vtk=True)))  # Original target landmarks
     
-    OptimalLandmarks = FindOptimalLandmarks(source, target)
     # Apply Init ICP with only the best landmarks
-    source, TransformMatrix = InitICP(source,target,render=False, Print=False, BestLMList=OptimalLandmarks)
-    # Actors.extend(list(CreateActorLabel(source, color='pink', convert_to_vtk=True)))
+    source_transformed, TransformMatrix, TransformList = InitICP(source,target,render=False, Print=False, BestLMList=FindOptimalLandmarks(source,target))
+    # Actors.extend(list(CreateActorLabel(source, color='pink', convert_to_vtk=True)))    # Init ICP Transformed source landmarks
+    
     # Apply ICP
-    TransformMatrixBis = first_ICP(source,target,render=False)
-    # Compute the final transform matrix
-    TransformMatrixFinal = TransformMatrix @ TransformMatrixBis
-    PRINT = False
-    if PRINT:
-        print(TransformMatrixFinal)
+    TransformMatrixBis = first_ICP(source_transformed,target,render=False) 
 
+    # Split the transform matrix into translation and rotation simpleitk transform
+    TransformMatrixsitk = sitk.VersorRigid3DTransform()
+    TransformMatrixsitk.SetTranslation(TransformMatrixBis[:3, 3].tolist())
+    try:
+        TransformMatrixsitk.SetMatrix(TransformMatrixBis[:3, :3].flatten().tolist())
+    except RuntimeError:
+        print('Error: The rotation matrix is not orthogonal')
+        mat = TransformMatrixBis[:3, :3]
+        print(mat)
+        print('det:', np.linalg.det(mat))
+        print('AxA^T:', mat @ mat.T)
+    TransformList.append(TransformMatrixsitk)
+
+
+
+    # Compute the final transform (inverse all the transforms)
+    TransformSITK = sitk.CompositeTransform(3)
+    for i in range(len(TransformList)-1,-1,-1):
+        TransformSITK.AddTransform(TransformList[i])
+
+    TransformSITK = TransformSITK.GetInverse()
+    # Write the transform to a file
+    sitk.WriteTransform(TransformSITK, 'data/output/transform.tfm')
+
+    TransformMatrixFinal = TransformMatrixBis @ TransformMatrix
+    # print(TransformMatrixFinal)
+    
     # Apply the final transform matrix
-    source = ApplyTransform(source,TransformMatrixFinal)
-    Actors.extend(list(CreateActorLabel(source, color='red', convert_to_vtk=True)))
+    source_transformed = ApplyTransform(source_transformed,TransformMatrixBis)
+    WriteJsonLandmarks(source_transformed, input_file,'data/output/output.json')
+    # Actors.extend(list(CreateActorLabel(source, color='red', convert_to_vtk=True)))
 
-    RenderWindow(Actors)
-    # WriteJsonLandmarks(source, input_file,'data/output/output.json')
+    source = ApplyTransform(source_orig,TransformMatrixFinal)
+    Actors.extend(list(CreateActorLabel(source, color='yellow', convert_to_vtk=True)))
 
+    # Invert the transform matrix
+    # TransformMatrixFinal = np.linalg.inv(TransformMatrixFinal)
+    # print(TransformMatrixFinal)
     # test(np.load('cache/source.npy', allow_pickle=True).item(),target,TransformMatrixFinalInv)
 
     # Resample the source image with the final transform 
-    # output = ResampleImage(input_file, transform=ConvertTransformMatrixToSimpleITK(TransformMatrixFinal))
-    # sitk.WriteImage(output, 'data/output/output.nii.gz')
-    # print('output saved')
+    print("Resampling...")
+    tic = time.time()
+    output = ResampleImage(input_image, gold_image, transform=TransformSITK)
+    sitk.WriteImage(output, 'data/output/output.nii.gz')
+
+    print('Output Resampled and Saved in {:.2f} seconds'.format(time.time()-tic))
+    return 0
+    RenderWindow(Actors)
 
 
 def FindOptimalLandmarks(source,target):
@@ -276,17 +332,10 @@ def WriteJsonLandmarks(landmarks, input_file ,output_file):
         tempData = json.load(outfile)
     for i in range(len(landmarks)):
         pos = landmarks[tempData['markups'][0]['controlPoints'][i]['label']]
-        pos = (pos + abs(inorigin)) * inspacing
-        tempData['markups'][0]['controlPoints'][i]['position'] = [pos[2],pos[1],pos[0]]
+        # pos = (pos + abs(inorigin)) * inspacing
+        tempData['markups'][0]['controlPoints'][i]['position'] = [pos[0],pos[1],pos[2]]
     with open(output_file, 'w') as outfile:
-        json.dump(tempData, outfile)
-
-def test(source,target,TransformMatrix):
-    source = ApplyTransform(source,TransformMatrix)
-    Actors = []
-    Actors.extend(list(CreateActorLabel(source,color='red',convert_to_vtk=True)))
-    Actors.extend(list(CreateActorLabel(target,color='green',convert_to_vtk=True)))
-    RenderWindow(Actors)
+        json.dump(tempData, outfile, indent=4)
 
 if __name__ == '__main__':
     for num in [5]:#range(1, 147):
@@ -311,6 +360,6 @@ if __name__ == '__main__':
             gold_file = '/home/luciacev/Desktop/Luc_Anchling/Projects/ASO_CBCT/data/Gold_Standard/GOLD_MAMP_0002_Or_T1.nii.gz'
 
         print('IC_'+num+'.nii.gz')
-        main(input_file, input_json_file, gold_json_file, gold_file)
+        main(input_file, input_json_file, gold_json_file, gold_file,num)
         # np.save('cache/sourcedata.npy', np.array(LoadImage(input_file)))
         # np.save('cache/targetdata.npy', np.array(LoadImage(gold_file)))
