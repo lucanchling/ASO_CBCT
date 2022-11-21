@@ -8,7 +8,8 @@ import vtk
 import platform
 from utils import *
 import time
-
+import os
+import shutil
 '''
 8888888  .d8888b.  8888888b.      
   888   d88P  Y88b 888   Y88b         
@@ -256,14 +257,14 @@ def main(input_file, input_json_file, gold_json_file, gold_file,num):
 
     TransformSITK = TransformSITK.GetInverse()
     # Write the transform to a file
-    sitk.WriteTransform(TransformSITK, 'data/output/transform.tfm')
+    # sitk.WriteTransform(TransformSITK, 'data/output/transform.tfm')
 
     TransformMatrixFinal = TransformMatrixBis @ TransformMatrix
     # print(TransformMatrixFinal)
     
     # Apply the final transform matrix
     source_transformed = ApplyTransform(source_transformed,TransformMatrixBis)
-    WriteJsonLandmarks(source_transformed, input_file,'data/output/output.json')
+    # WriteJsonLandmarks(source_transformed, input_file,'data/output/output.json')
     # Actors.extend(list(CreateActorLabel(source, color='red', convert_to_vtk=True)))
 
     source = ApplyTransform(source_orig,TransformMatrixFinal)
@@ -278,9 +279,10 @@ def main(input_file, input_json_file, gold_json_file, gold_file,num):
     print("Resampling...")
     tic = time.time()
     output = ResampleImage(input_image, gold_image, transform=TransformSITK)
-    sitk.WriteImage(output, 'data/output/output.nii.gz')
-
-    print('Output Resampled and Saved in {:.2f} seconds'.format(time.time()-tic))
+    outpath = 'data/output/test/'+str(num)+'_output.nii.gz'
+    sitk.WriteImage(output, outpath)
+    file_size = os.path.getsize(outpath)
+    print('Output Resampled and Saved in {:.2f} seconds (file_size: {:.2f}MB)'.format(time.time()-tic,file_size/1e6))
     return 0
     RenderWindow(Actors)
 
@@ -338,7 +340,7 @@ def WriteJsonLandmarks(landmarks, input_file ,output_file):
         json.dump(tempData, outfile, indent=4)
 
 if __name__ == '__main__':
-    for num in [5]:#range(1, 147):
+    for num in range(7, 20):
         num
         if num < 10:
             num = "000" + str(num)
@@ -352,14 +354,15 @@ if __name__ == '__main__':
             input_json_file = '/Users/luciacev-admin/Desktop/Luc_Anchling/Projects/ASO_CBCT/data/IC_0086.mrk.json'
             gold_file = '/Users/luciacev-admin/Desktop/Luc_Anchling/Projects/ASO_CBCT/data/MAMP_0002_Or_T1.nii.gz'
             gold_json_file = '/Users/luciacev-admin/Desktop/Luc_Anchling/Projects/ASO_CBCT/data/MAMP_02_T1.mrk.json'
-
         elif platform.system() == "Linux":
             input_file = '/home/luciacev/Desktop/Luc_Anchling/DATA/ASO_CBCT/Anonymized/IC_'+num+'.nii.gz'
+            shutil.copy(input_file, 'data/output/test/'+str(num)+'_input.nii.gz')
             input_json_file = '/home/luciacev/Desktop/Luc_Anchling/DATA/ASO_CBCT/Anonymized/Landmarks/IC_'+num+'.mrk.json'
             gold_json_file = '/home/luciacev/Desktop/Luc_Anchling/Projects/ASO_CBCT/data/Gold_Standard/GOLD_MAMP_02_T1.mrk.json'
             gold_file = '/home/luciacev/Desktop/Luc_Anchling/Projects/ASO_CBCT/data/Gold_Standard/GOLD_MAMP_0002_Or_T1.nii.gz'
 
         print('IC_'+num+'.nii.gz')
         main(input_file, input_json_file, gold_json_file, gold_file,num)
+        print('='*70)
         # np.save('cache/sourcedata.npy', np.array(LoadImage(input_file)))
         # np.save('cache/targetdata.npy', np.array(LoadImage(gold_file)))

@@ -441,6 +441,22 @@ def ResampleImage(image, target, transform):
     resample.SetReferenceImage(target)
     resample.SetTransform(transform)
     resample.SetInterpolator(sitk.sitkLinear)
+    orig_size = np.array(image.GetSize(), dtype=np.int)
+    ratio = np.array(image.GetSpacing())/np.array(target.GetSpacing())
+    new_size = orig_size*(ratio)+0.5
+    new_size = np.ceil(new_size).astype(np.int) #  Image dimensions are in integers
+    new_size = [int(s) for s in new_size]
+    resample.SetSize(new_size)
+    resample.SetDefaultPixelValue(0)
+
+    # Set New Origin
+    orig_origin = np.array(image.GetOrigin())
+    # apply transform to the origin
+    orig_center = np.array(image.TransformContinuousIndexToPhysicalPoint(np.array(image.GetSize())/2.0))
+    new_center = np.array(target.TransformContinuousIndexToPhysicalPoint(np.array(target.GetSize())/2.0))
+    new_origin = orig_origin - orig_center + new_center
+    resample.SetOutputOrigin(new_origin)
+    
     return resample.Execute(image)
 
 def ConvertTransformMatrixToSimpleITK(transformMatrix):
