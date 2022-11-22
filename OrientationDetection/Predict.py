@@ -40,8 +40,6 @@ def gen_plot(direction, direction_hat,scan_path):
 
 def main(args):
     data_dir = args.data_dir
-
-    out_dir = args.out_dir
     
     csv_path = os.path.join(data_dir, 'CSV')
 
@@ -49,12 +47,12 @@ def main(args):
     df_val = pd.read_csv(os.path.join(csv_path, 'val.csv'))
     df_test = pd.read_csv(os.path.join(csv_path, 'test.csv'))
     
-    db = DataModuleClass(df_train, df_val, df_test, batch_size=1, train_transform=None, val_transform=None, test_transform=RandomRotation3D(x_angle=np.pi/4, y_angle=np.pi/4, z_angle=np.pi/4))
+    db = DataModuleClass(df_train, df_val, df_test, batch_size=1, train_transform=None, val_transform=None, test_transform=None)#RandomRotation3D(x_angle=np.pi/4, y_angle=np.pi/4, z_angle=np.pi/4))
     db.setup('test')
     
     model = DenseNet(lr=0.0001)
 
-    model.load_state_dict(torch.load(os.path.join(out_dir,'checkpoints/'+args.checkpoint+'.ckpt')['state_dict']))
+    model.load_state_dict(torch.load(args.checkpoint)['state_dict'])
 
     model.to('cuda')
     
@@ -78,8 +76,7 @@ def main(args):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data_dir', type=str, default='/home/luciacev/Desktop/Luc_Anchling/DATA/ASO_CBCT/Oriented/RESAMPLED/')
-    parser.add_argument('--out_dir', type=str, default='/home/luciacev/Desktop/Luc_Anchling/Training_OR/')
+    parser.add_argument('--data_dir', type=str, default='/home/luciacev/Desktop/Luc_Anchling/DATA/ASO_CBCT/Oriented/LargeFOV_RESAMPLED/')
     parser.add_argument('--checkpoint', type=str, default=None)
 
     args = parser.parse_args()

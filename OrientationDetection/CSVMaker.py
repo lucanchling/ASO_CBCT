@@ -65,8 +65,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     data_dir = args.data_dir
-    output_dir = os.path.join(data_dir, args.out)
+    output_dir = os.path.join(data_dir, args.out_extension)
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-        
+
     main(data_dir, output_dir, landmark=None)

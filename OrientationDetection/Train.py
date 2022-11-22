@@ -44,7 +44,7 @@ def main(args):
     early_stop_callback = EarlyStopping(monitor='val_loss', min_delta=0.00, patience=args.patience, verbose=True, mode="min")
 
     if args.tb_dir:
-        logger = TensorBoardLogger(save_dir=os.path.join(args.out,args.tb_dir), name=None)
+        logger = TensorBoardLogger(save_dir=os.path.join(args.out,'/',args.tb_dir), name=None)
     
     direction_logger = DirectionLogger(train_scan=df_train['scan_path'][0], val_scan=df_val['scan_path'][0])
     # ic(df_train['scan_path'][0])
@@ -65,6 +65,16 @@ def main(args):
     # print the path of the best model
     ic(trainer.checkpoint_callback.best_model_path)
 
+    if not os.path.exists(os.path.join(args.out, 'Models')):
+        os.mkdir(os.path.join(args.out, 'Models'))
+    
+    # save the best model to Models folder
+    os.rename(trainer.checkpoint_callback.best_model_path, os.path.join(args.out, 'Models', "lr"+str(args.lr)+"_bs"+str(args.batch_size)+".ckpt"))
+    
+    # rename tb dir Version_0 to lr=args.lr ; bs=args.batch_size
+    os.rename(os.path.join(args.out, args.tb_dir,'version_0'), os.path.join(args.out,args.tb_dir, "lr="+str(args.lr)+" ; bs="+str(args.batch_size)))
+
+
 if __name__ == '__main__':
 
 
@@ -73,7 +83,7 @@ if __name__ == '__main__':
     parser.add_argument('--csv_valid', help='CSV with Scan and Landmarks files', type=str, default='val.csv')
     parser.add_argument('--csv_test', help='CSV with Scan and Landmarks files', type=str, default='test.csv')      
     parser.add_argument('--lr', '--learning-rate', default=1e-4, type=float, help='Learning rate')
-    parser.add_argument('--log_every_n_steps', help='Log every n steps', type=int, default=1)    
+    parser.add_argument('--log_every_n_steps', help='Log every n steps', type=int, default=10)    
     parser.add_argument('--epochs', help='Max number of epochs', type=int, default=200)    
     parser.add_argument('--model', help='Model to continue training', type=str, default= None)
     parser.add_argument('--out', help='Output', type=str, default="")

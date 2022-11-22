@@ -115,7 +115,7 @@ if __name__ == "__main__":
     transform_group = parser.add_argument_group('Transform parameters')
     transform_group.add_argument('--ref', type=str, help='Reference image. Use an image as reference for the resampling', default=None)
     transform_group.add_argument('--size', nargs="+", type=int, help='Output size, -1 to leave unchanged',default=[128,128,128])
-    transform_group.add_argument('--spacing', nargs="+", type=float, default=None, help='Use a pre defined spacing')    # 1.23196283 | 1.44676491 | 0.71221853
+    transform_group.add_argument('--spacing', nargs="+", type=float, default=None, help='Use a pre defined spacing')    # 1.23196283 | 1.44676491 | 0.71221853 | 0.69032308
     transform_group.add_argument('--origin', nargs="+", type=float, default=None, help='Use a pre defined origin')
     transform_group.add_argument('--linear', type=bool, help='Use linear interpolation.', default=False)
     transform_group.add_argument('--center', type=bool, help='Center the image in the space', default=True)
