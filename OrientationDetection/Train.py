@@ -28,14 +28,14 @@ def main(args):
 
 
     checkpoint_callback = ModelCheckpoint(
-        dirpath= args.out + 'checkpoints',
+        dirpath= os.path.join(args.out,'checkpoints'),
         filename='{epoch}-{val_loss:.2f}',
         save_top_k=2,
         monitor='val_loss'
     )
 
     db = DataModuleClass(df_train, df_val, df_test, batch_size=args.batch_size, num_workers=args.num_workers, 
-                        train_transform=RandomRotation3D(x_angle=np.pi/2, y_angle=np.pi/2, z_angle=np.pi/2), 
+                        train_transform=RandomRotation3D(x_angle=args.angle, y_angle=args.angle, z_angle=args.angle), 
                         val_transform=None,#RandomRotation3D(x_angle=np.pi/10, y_angle=np.pi/10, z_angle=np.pi/10), 
                         test_transform=None, mount_point=mount_point)
     
@@ -44,7 +44,7 @@ def main(args):
     early_stop_callback = EarlyStopping(monitor='val_loss', min_delta=0.00, patience=args.patience, verbose=True, mode="min")
 
     if args.tb_dir:
-        logger = TensorBoardLogger(save_dir=os.path.join(args.out,'/',args.tb_dir), name=None)
+        logger = TensorBoardLogger(save_dir=os.path.join(args.out,args.tb_dir), name=None)
     
     direction_logger = DirectionLogger(train_scan=df_train['scan_path'][0], val_scan=df_val['scan_path'][0])
     # ic(df_train['scan_path'][0])
@@ -69,10 +69,10 @@ def main(args):
         os.mkdir(os.path.join(args.out, 'Models'))
     
     # save the best model to Models folder
-    os.rename(trainer.checkpoint_callback.best_model_path, os.path.join(args.out, 'Models', "lr"+"{:.0e}".format(args.lr)+"_bs"+str(args.batch_size)+".ckpt"))
+    os.rename(trainer.checkpoint_callback.best_model_path, os.path.join(args.out, 'Models', "lr"+"{:.0e}".format(args.lr)+"_bs"+str(args.batch_size)+"_angle"+str(round(args.angle,2))+".ckpt"))
     
     # rename tb dir Version_0 to lr=args.lr ; bs=args.batch_size
-    os.rename(os.path.join(args.out, args.tb_dir,'version_0'), os.path.join(args.out,args.tb_dir, "lr="+"{:.0e}".format(args.lr)+" ; bs="+str(args.batch_size)))
+    os.rename(os.path.join(args.out, args.tb_dir,'version_0'), os.path.join(args.out,args.tb_dir, "lr="+"{:.0e}".format(args.lr)+" ; bs="+str(args.batch_size)+" ; angle="+str(round(args.angle,2))))
 
 
 if __name__ == '__main__':
@@ -91,6 +91,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_workers', help='Number of workers for loading', type=int, default=20)
     parser.add_argument('--batch_size', help='Batch size', type=int, default=30)
     parser.add_argument('--patience', help='Patience for early stopping', type=int, default=30)
+    parser.add_argument('--angle', help='Angle for random rotation', type=float, default=np.pi/2)
 
     parser.add_argument('--tb_dir', help='Tensorboard output dir', type=str, default='tb_logs/')
 

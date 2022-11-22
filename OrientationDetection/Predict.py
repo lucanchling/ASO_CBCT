@@ -47,7 +47,10 @@ def main(args):
     df_val = pd.read_csv(os.path.join(csv_path, 'val.csv'))
     df_test = pd.read_csv(os.path.join(csv_path, 'test.csv'))
     
-    db = DataModuleClass(df_train, df_val, df_test, batch_size=1, train_transform=None, val_transform=None, test_transform=None)#RandomRotation3D(x_angle=np.pi/4, y_angle=np.pi/4, z_angle=np.pi/4))
+    test_transform = None
+    if args.test_rot:
+        test_transform = RandomRotation3D(x_angle=np.pi/4, y_angle=np.pi/4, z_angle=np.pi/4)
+    db = DataModuleClass(df_train, df_val, df_test, batch_size=1, train_transform=None, val_transform=None, test_transform=test_transform)
     db.setup('test')
     
     model = DenseNet(lr=0.0001)
@@ -77,6 +80,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_dir', type=str, default='/home/luciacev/Desktop/Luc_Anchling/DATA/ASO_CBCT/Oriented/LargeFOV_RESAMPLED/')
+    parser.add_argument('--test_rot', type=bool, default=False)
     parser.add_argument('--checkpoint', type=str, default=None)
 
     args = parser.parse_args()
