@@ -44,7 +44,7 @@ def main(args):
     early_stop_callback = EarlyStopping(monitor='val_loss', min_delta=0.00, patience=args.patience, verbose=True, mode="min")
 
     if args.tb_dir:
-        logger = TensorBoardLogger(save_dir=args.tb_dir, name=None)
+        logger = TensorBoardLogger(save_dir=os.path.join(args.out,args.tb_dir), name=None)
     
     direction_logger = DirectionLogger(train_scan=df_train['scan_path'][0], val_scan=df_val['scan_path'][0])
     # ic(df_train['scan_path'][0])
@@ -67,10 +67,6 @@ def main(args):
 
 if __name__ == '__main__':
 
-    
-    data_dir = "/home/luciacev/Desktop/Luc_Anchling/DATA/ASO_CBCT/Oriented/RESAMPLED"
-
-    out_dir = "/home/luciacev/Desktop/Luc_Anchling/Training_OR/"
 
     parser = argparse.ArgumentParser(description='ALI CBCT Training')
     parser.add_argument('--csv_train', help='CSV with Scan and Landmarks files', type=str, default='train.csv')    
@@ -80,13 +76,13 @@ if __name__ == '__main__':
     parser.add_argument('--log_every_n_steps', help='Log every n steps', type=int, default=1)    
     parser.add_argument('--epochs', help='Max number of epochs', type=int, default=200)    
     parser.add_argument('--model', help='Model to continue training', type=str, default= None)
-    parser.add_argument('--out', help='Output', type=str, default=out_dir)
-    parser.add_argument('--mount_point', help='Dataset mount directory', type=str, default=data_dir)
+    parser.add_argument('--out', help='Output', type=str, default="")
+    parser.add_argument('--mount_point', help='Dataset mount directory', type=str, default="")
     parser.add_argument('--num_workers', help='Number of workers for loading', type=int, default=20)
     parser.add_argument('--batch_size', help='Batch size', type=int, default=30)
     parser.add_argument('--patience', help='Patience for early stopping', type=int, default=30)
 
-    parser.add_argument('--tb_dir', help='Tensorboard output dir', type=str, default=out_dir+'tb_logs/')
+    parser.add_argument('--tb_dir', help='Tensorboard output dir', type=str, default='tb_logs/')
 
     args = parser.parse_args()
 

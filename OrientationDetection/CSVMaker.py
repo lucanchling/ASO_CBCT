@@ -2,7 +2,7 @@ import csv
 import os
 import glob
 from sklearn.model_selection import train_test_split
-
+import argparse
 
 def write_csv_from_dict(data_dir, filename, data, ldmk=None):
     with open(data_dir + '/' + filename, 'w') as f:
@@ -56,16 +56,17 @@ def main(data_dir, output_dir, landmark=None, csv_summary=False):
 
 if __name__ == '__main__':
 
-    # parser = argparse.ArgumentParser(description='ALI CBCT Training')
-    # parser.add_argument('--data_dir', help='Directory with all data', type=str,default='/home/luciacev/Desktop/Luc_Anchling/DATA/ALI_CBCT/Test')
-    # parser.add_argument('--out',help='output directory with csv files',type=str, default='')
-    # parser.add_argument('--landmark', help='Landmark that you want to train', type=str,default='S')#required=True)
-    # parser.add_argument('--csv_sumup',help='to creat a csv file with scans and the different landmarks that they have',type=bool,default=False)
+    parser = argparse.ArgumentParser(description='ALI CBCT Training')
+    parser.add_argument('--data_dir', help='Directory with all data', type=str,default='/home/luciacev/Desktop/Luc_Anchling/DATA/ALI_CBCT/Test')
+    parser.add_argument('--out_extension',help='output extension with csv files',type=str, default='CSV')
+    parser.add_argument('--landmark', help='Landmark that you want to train', type=str,default=None)
+    parser.add_argument('--csv_sumup',help='to creat a csv file with scans and the different landmarks that they have',type=bool,default=False)
 
-    # args = parser.parse_args()
+    args = parser.parse_args()
 
-    data_dir = '/home/luciacev/Desktop/Luc_Anchling/DATA/ASO_CBCT/Oriented/RESAMPLED'
-    output_dir = data_dir + '/CSV'
+    data_dir = args.data_dir
+    output_dir = os.path.join(data_dir, args.out)
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
+        
     main(data_dir, output_dir, landmark=None)

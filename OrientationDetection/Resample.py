@@ -105,7 +105,7 @@ if __name__ == "__main__":
     in_group = parser.add_mutually_exclusive_group(required=False)
 
     in_group.add_argument('--img', type=str, help='image to resample',default=None)
-    in_group.add_argument('--dir', type=str, help='Directory with image to resample',default='/home/luciacev/Desktop/Luc_Anchling/DATA/ASO_CBCT/Oriented')
+    in_group.add_argument('--dir', type=str, help='Directory with image to resample',default='')
     in_group.add_argument('--csv', type=str, help='CSV file with column img with paths to images to resample')
 
     csv_group = parser.add_argument_group('CSV extra parameters')
@@ -115,7 +115,7 @@ if __name__ == "__main__":
     transform_group = parser.add_argument_group('Transform parameters')
     transform_group.add_argument('--ref', type=str, help='Reference image. Use an image as reference for the resampling', default=None)
     transform_group.add_argument('--size', nargs="+", type=int, help='Output size, -1 to leave unchanged',default=[128,128,128])
-    transform_group.add_argument('--spacing', nargs="+", type=float, default=[1.23196283, 1.23196283, 1.23196283], help='Use a pre defined spacing')    # 1.43321683
+    transform_group.add_argument('--spacing', nargs="+", type=float, default=None, help='Use a pre defined spacing')    # 1.23196283 | 1.44676491 | 0.71221853
     transform_group.add_argument('--origin', nargs="+", type=float, default=None, help='Use a pre defined origin')
     transform_group.add_argument('--linear', type=bool, help='Use linear interpolation.', default=False)
     transform_group.add_argument('--center', type=bool, help='Center the image in the space', default=True)
@@ -130,8 +130,9 @@ if __name__ == "__main__":
 
     out_group = parser.add_argument_group('Ouput parameters')
     out_group.add_argument('--ow', type=int, help='Overwrite', default=1)
-    out_group.add_argument('--out', type=str, help='Output image/directory', default='/home/luciacev/Desktop/Luc_Anchling/DATA/ASO_CBCT/Oriented/RESAMPLED')#"/home/luciacev/Desktop/Luc_Anchling/DATA/ALI_CBCT/test/output") # /home/luciacev/Desktop/Maxime_Gillot/Data/ALI_CBCT/ULCB_dataset/output
+    out_group.add_argument('--out', type=str, help='Output image/directory', default='')
     out_group.add_argument('--out_ext', type=str, help='Output extension type', default=None)
+    out_group.add_argument('--landmarks', type=bool, help="Copy landmark files to output directory", default=False)
 
     args = parser.parse_args()
 
@@ -215,25 +216,20 @@ if __name__ == "__main__":
                 img = sitk.ReadImage(fobj["img"])
             # print(len(Spacing))
 
-            # img = sitk.ReadImage(fobj["out"])
-            # Spacing.append(np.array(img.GetSpacing()))
-            # Size.append(np.array(img.GetSize()))
-            # print("Size: ", img.GetSize())
-            # print("Spacing: ", img.GetSpacing())
-            
-            print("Writing:", fobj["out"])
-            writer = sitk.ImageFileWriter()
-            writer.SetFileName(fobj["out"])
-            writer.UseCompressionOn()
-            writer.Execute(img)
+            if args.spacing is not None:
+                print("Writing:", fobj["out"])
+                writer = sitk.ImageFileWriter()
+                writer.SetFileName(fobj["out"])
+                writer.UseCompressionOn()
+                writer.Execute(img)
 
             # print("Size of file: {:.2f}kB".format(os.path.getsize(fobj["out"], ) / 1024))
             
         except Exception as e:
             print(e, file=sys.stderr)
     print("For {} images:".format(len(filenames)))
-    # print("Size: ", np.mean(Size, axis=0))
     print("Spacing: ", np.mean(Spacing, axis=0))
 
-    # for i in range(len(FROM)):
-    #     shutil.copy(FROM[i], WHERE[i])
+    if args.landmarks:  
+        for i in range(len(FROM)):
+            shutil.copy(FROM[i], WHERE[i])

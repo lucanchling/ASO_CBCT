@@ -1,12 +1,7 @@
-import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
-from monai.networks.nets.densenet import DenseNet121, DenseNet169, DenseNet201
-import numpy as np
-from icecream import ic
+from monai.networks.nets.densenet import DenseNet121
 import pytorch_lightning as pl
-import torchmetrics
 
 # Different Network
 
@@ -14,10 +9,8 @@ class DenseNet(pl.LightningModule):
     def __init__(self, lr):
         super().__init__()
         self.lr = lr
-        self.net = DenseNet169(spatial_dims=3, in_channels=1, out_channels=3)
-        # self.net = EfficientNetBN('efficientnet-b2', spatial_dims=3, in_channels=1,num_classes=3, pretrained=False)
+        self.net = DenseNet121(spatial_dims=3, in_channels=1, out_channels=3)
         self.CosSimLoss = nn.CosineSimilarity()
-        self.Accuracy = torchmetrics.Accuracy()
 
     def forward(self, x):
         return nn.functional.normalize(self.net(x),dim=1)
@@ -39,7 +32,7 @@ class DenseNet(pl.LightningModule):
         scan, directionVector, scan_path = batch
         batch_size = scan.shape[0]
         directionVector_hat = self(scan)
-        # ic(directionVector_hat)
+        
         loss = (1 - self.CosSimLoss(directionVector_hat, directionVector))
         loss = loss.sum()
         self.log('val_loss', loss, batch_size=batch_size)
@@ -54,7 +47,7 @@ class DenseNet(pl.LightningModule):
         
         loss = (1 - self.CosSimLoss(directionVector_hat, directionVector))
         loss = loss.sum()
-        self.log('val_loss', loss, batch_size=batch_size)
+        self.log('test_loss', loss, batch_size=batch_size)
         
         return loss
 
