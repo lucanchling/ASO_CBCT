@@ -69,10 +69,10 @@ def main(args):
         os.mkdir(os.path.join(args.out, 'Models'))
     
     # save the best model to Models folder
-    os.rename(trainer.checkpoint_callback.best_model_path, os.path.join(args.out, 'Models', "lr"+str(args.lr)+"_bs"+str(args.batch_size)+".ckpt"))
+    os.rename(trainer.checkpoint_callback.best_model_path, os.path.join(args.out, 'Models', "lr"+"{:.0e}".format(args.lr)+"_bs"+str(args.batch_size)+".ckpt"))
     
     # rename tb dir Version_0 to lr=args.lr ; bs=args.batch_size
-    os.rename(os.path.join(args.out, args.tb_dir,'version_0'), os.path.join(args.out,args.tb_dir, "lr="+str(args.lr)+" ; bs="+str(args.batch_size)))
+    os.rename(os.path.join(args.out, args.tb_dir,'version_0'), os.path.join(args.out,args.tb_dir, "lr="+"{:.0e}".format(args.lr)+" ; bs="+str(args.batch_size)))
 
 
 if __name__ == '__main__':
