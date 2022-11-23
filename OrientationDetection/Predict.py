@@ -49,11 +49,11 @@ def main(args):
     
     test_transform = None
     if args.test_rot:
-        test_transform = RandomRotation3D(x_angle=np.pi/4, y_angle=np.pi/4, z_angle=np.pi/4)
+        test_transform = RandomRotation3D(x_angle=args.angle, y_angle=args.angle, z_angle=args.angle)
     db = DataModuleClass(df_train, df_val, df_test, batch_size=1, train_transform=None, val_transform=None, test_transform=test_transform)
     db.setup('test')
     
-    model = DenseNet(lr=0.0001)
+    model = DenseNet(args.lr)
 
     model.load_state_dict(torch.load(args.checkpoint)['state_dict'])
 
@@ -79,9 +79,11 @@ def main(args):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data_dir', type=str, default='/home/luciacev/Desktop/Luc_Anchling/DATA/ASO_CBCT/Oriented/LargeFOV_RESAMPLED/')
+    parser.add_argument('--data_dir', type=str, default='/home/luciacev/Desktop/Luc_Anchling/DATA/ASO_CBCT/Oriented/LARGEFOV_RESAMPLED/')
     parser.add_argument('--test_rot', type=bool, default=False)
-    parser.add_argument('--checkpoint', type=str, default=None)
+    parser.add_argument('--lr', type=float, default=1e-4)
+    parser.add_argument('--checkpoint', type=str, default='/home/luciacev/Desktop/Luc_Anchling/Training_OR/NEW_LFOV/Models/lr1e-04_bs30_angle1.57.ckpt')
+    parser.add_argument('--angle', type=float, default=np.pi/2)
 
     args = parser.parse_args()
     
