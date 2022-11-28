@@ -54,7 +54,7 @@ def main(args):
     df = pd.DataFrame([ckpt.split('/')[-1] for ckpt in list_ckpt], columns=['checkpoint_path'])
     
     angle = args.angle
-    for angle in [3.14159265359, 1.57079632679, 1.0471975512, 0.78539816339, 0.52359877559, 0.39269908169, 0.26179938779, 0]:
+    for angle in [3.14159265359, 1.57079632679, 1.0471975512, 0.78539816339, 0.52359877559, 0.39269908169, 0.26179938779, 0.0]:
         print("Generating for angle {:.3}".format(angle))
         test_transform = None
         if args.test_rot:
