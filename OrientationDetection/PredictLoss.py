@@ -47,10 +47,15 @@ def main(args):
     df_val = pd.read_csv(os.path.join(csv_path, 'val.csv'))
     df_test = pd.read_csv(os.path.join(csv_path, 'test.csv'))
     
-    df = pd.DataFrame([i.split('/')[-1] for i in df_test['scan_path']], columns=['checkpoint_path'])
 
+    normpath = os.path.normpath("/".join([args.model_dir, '**', '*']))
+    list_ckpt = [i for i in glob.glob(normpath,recursive=True) if i.endswith(".ckpt")==True]
+    
+    df = pd.DataFrame([ckpt.split('/')[-1] for ckpt in list_ckpt], columns=['checkpoint_path'])
+    
     angle = args.angle
     for angle in [3.14159265359, 1.57079632679, 1.0471975512, 0.78539816339, 0.52359877559, 0.39269908169, 0.26179938779, 0]:
+        print("Generating for angle {:.3}".format(angle))
         test_transform = None
         if args.test_rot:
             test_transform = RandomRotation3D(x_angle=angle, y_angle=angle, z_angle=angle)
@@ -67,41 +72,39 @@ def main(args):
         
         
         ALL_LOSSES = []
-        normpath = os.path.normpath("/".join([args.model_dir, '**', '*']))
-        for cp,checkpoint_path in enumerate(glob.glob(normpath,recursive=True)):
-            if checkpoint_path.endswith(".ckpt"):
-                LOSS = []
-                print(checkpoint_path.split('/')[-1])
+        for cp,checkpoint_path in enumerate(list_ckpt):
+            LOSS = []
+            # print(checkpoint_path.split('/')[-1])
 
-                lr = float(checkpoint_path.split('_bs')[0].split('/')[-1].split('lr')[1])
+            lr = float(checkpoint_path.split('_bs')[0].split('/')[-1].split('lr')[1])
 
-                model = DenseNet(lr)
+            model = DenseNet(lr)
 
-                model.load_state_dict(torch.load(checkpoint_path)['state_dict'])
+            model.load_state_dict(torch.load(checkpoint_path)['state_dict'])
 
-                model.to('cuda')
-                
-                model.eval()
-                with torch.no_grad():
-                    for i in range(len(SCAN)):
-                        scan = SCAN[i].to('cuda')
-                        directionVector = DIRECTIONVECTOR[i].to('cuda')
-                        scan_path = SCANPATH[i]
-                        directionVector_pred = model(scan.to('cuda'))
-                        directionVector_pred = directionVector_pred.cpu().numpy()
-                        directionVector = directionVector.cpu().numpy()
-                        loss = loss_fn(directionVector, directionVector_pred)
-                        # ic(loss)
-                        # ic(scan_path)
-                        LOSS.append(loss)
-                        # ic(directionVector, directionVector_pred, scan_path, loss(directionVector, directionVector_pred).item())
-                        # gen_plot(directionVector[0], directionVector_pred[0],scan_path)
-                        # break
-                # print('MEAN LOSS:', np.mean(LOSS))
-                ALL_LOSSES.append(np.mean(LOSS))
+            model.to('cuda')
+            
+            model.eval()
+            with torch.no_grad():
+                for i in range(len(SCAN)):
+                    scan = SCAN[i].to('cuda')
+                    directionVector = DIRECTIONVECTOR[i].to('cuda')
+                    scan_path = SCANPATH[i]
+                    directionVector_pred = model(scan.to('cuda'))
+                    directionVector_pred = directionVector_pred.cpu().numpy()
+                    directionVector = directionVector.cpu().numpy()
+                    loss = loss_fn(directionVector, directionVector_pred)
+                    # ic(loss)
+                    # ic(scan_path)
+                    LOSS.append(loss)
+                    # ic(directionVector, directionVector_pred, scan_path, loss(directionVector, directionVector_pred).item())
+                    # gen_plot(directionVector[0], directionVector_pred[0],scan_path)
+                    # break
+            # print('MEAN LOSS:', np.mean(LOSS))
+            ALL_LOSSES.append(np.mean(LOSS))
 
-                # if cp == 1:
-                #     break
+            # if cp == 1:
+            #     break
 
         df['mean_loss (angle='+str(round(angle,2))+')'] = ALL_LOSSES
     df.to_csv(os.path.join(args.model_dir, 'ALL_LOSSES.csv'))
