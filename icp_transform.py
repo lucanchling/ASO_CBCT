@@ -4,12 +4,13 @@
 # NOT VERY PROPER WAY TO DO IT BUT IT WORKS
 
 import numpy as np
-import vtk
-import platform
 from utils import *
 import time
 import os
-import shutil
+import glob
+from icecream import ic
+import argparse
+from tqdm import tqdm
 '''
 8888888  .d8888b.  8888888b.      
   888   d88P  Y88b 888   Y88b         
@@ -202,7 +203,7 @@ def InitICP(source,target,render=False, Print=False, BestLMList=None, search=Fal
 888       888 d88P     888 8888888 888    Y888
 '''
 
-def main(input_file, input_json_file, gold_json_file, gold_file,num):
+def ICP(input_file,input_json_file,gold_file,gold_json_file,nb_lmrk):
     
     # Read input files
     input_image = sitk.ReadImage(input_file)
@@ -229,7 +230,7 @@ def main(input_file, input_json_file, gold_json_file, gold_file,num):
     Actors.extend(list(CreateActorLabel(target, color='green', convert_to_vtk=True)))  # Original target landmarks
     
     # Apply Init ICP with only the best landmarks
-    source_transformed, TransformMatrix, TransformList = InitICP(source,target,render=False, Print=False, BestLMList=FindOptimalLandmarks(source,target))
+    source_transformed, TransformMatrix, TransformList = InitICP(source,target,render=False, Print=False, BestLMList=FindOptimalLandmarks(source,target,nb_lmrk))
     # Actors.extend(list(CreateActorLabel(source, color='pink', convert_to_vtk=True)))    # Init ICP Transformed source landmarks
     
     # Apply ICP
@@ -264,7 +265,6 @@ def main(input_file, input_json_file, gold_json_file, gold_file,num):
     
     # Apply the final transform matrix
     source_transformed = ApplyTransform(source_transformed,TransformMatrixBis)
-    # WriteJsonLandmarks(source_transformed, input_file,'data/output/output.json')
     # Actors.extend(list(CreateActorLabel(source, color='red', convert_to_vtk=True)))
 
     source = ApplyTransform(source_orig,TransformMatrixFinal)
@@ -279,15 +279,10 @@ def main(input_file, input_json_file, gold_json_file, gold_file,num):
     print("Resampling...")
     tic = time.time()
     output = ResampleImage(input_image, gold_image, transform=TransformSITK)
-    outpath = 'data/output/test/'+str(num)+'_output.nii.gz'
-    sitk.WriteImage(output, outpath)
-    file_size = os.path.getsize(outpath)
-    print('Output Resampled and Saved in {:.2f} seconds (file_size: {:.2f}MB)'.format(time.time()-tic,file_size/1e6))
-    return 0
+    return output,source_transformed
     RenderWindow(Actors)
 
-
-def FindOptimalLandmarks(source,target):
+def FindOptimalLandmarks(source,target,nb_lmrk):
     '''
     Find the optimal landmarks to use for the Init ICP
     
@@ -304,7 +299,7 @@ def FindOptimalLandmarks(source,target):
         list of the optimal landmarks
     '''
     dist, LMlist,ii = [],[],0
-    while len(dist) < 210 and ii < 2500:
+    while len(dist) < (nb_lmrk*(nb_lmrk-1)*(nb_lmrk-2)) and ii < 2500:
         ii+=1
         source = np.load('cache/source.npy', allow_pickle=True).item()
         firstpick,secondpick,thirdpick, d = InitICP(source,target,render=False, Print=False, search=True)
@@ -314,7 +309,7 @@ def FindOptimalLandmarks(source,target):
     print("Min Dist: {:.2f} | for LM: {} | len = {}".format(min(dist),LMlist[dist.index(min(dist))],len(dist)))
     return LMlist[dist.index(min(dist))]
 
-def WriteJsonLandmarks(landmarks, input_file ,output_file):
+def WriteJsonLandmarks(landmarks, input_json_file ,output_file):
     '''
     Write the landmarks to a json file
     
@@ -325,12 +320,7 @@ def WriteJsonLandmarks(landmarks, input_file ,output_file):
     output_file : str
         output file name
     '''
-    # # Load the input image
-    # spacing, origin = LoadImage(input_file)
-    inspacing, inorigin = np.load('cache/sourcedata.npy', allow_pickle=True)[0], np.load('cache/sourcedata.npy', allow_pickle=True)[1]
-    goldspacing, goldorigin = np.load('cache/targetdata.npy', allow_pickle=True)[0], np.load('cache/targetdata.npy', allow_pickle=True)[1]
-    
-    with open('/home/luciacev/Desktop/Luc_Anchling/Projects/ASO_CBCT/TEMP.mrk.json', 'r') as outfile:
+    with open(input_json_file, 'r') as outfile:
         tempData = json.load(outfile)
     for i in range(len(landmarks)):
         pos = landmarks[tempData['markups'][0]['controlPoints'][i]['label']]
@@ -339,30 +329,53 @@ def WriteJsonLandmarks(landmarks, input_file ,output_file):
     with open(output_file, 'w') as outfile:
         json.dump(tempData, outfile, indent=4)
 
+def main(args):
+    input_dir, gold_dir, out_dir,nb_lmrk = args.data_dir,args.gold_dir,args.out_dir,args.nb_lmrk
+    #ic(input_dir, gold_dir, out_dir,nb_lmrk)
+
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+    
+    normpath = os.path.normpath("/".join([gold_dir, '**', '']))
+    for file in glob.iglob(normpath, recursive=True):
+        if os.path.isfile(file) and True in [ext in file for ext in ["json"]]:
+            gold_json_file = file
+        if os.path.isfile(file) and True in [ext in file for ext in [".nrrd", ".nii", ".nii.gz", ".mhd", ".dcm", ".DCM", ".jpg", ".png", 'gipl.gz']]:
+            gold_file = file
+    
+    input_files = []
+    input_json_files = []
+    normpath = os.path.normpath("/".join([input_dir, '**', '']))
+    for file in sorted(glob.iglob(normpath, recursive=True)):
+        if os.path.isfile(file) and True in [ext in file for ext in ["json"]]:
+            input_json_files.append(file)
+        if os.path.isfile(file) and True in [ext in file for ext in [".nrrd", ".nii", ".nii.gz", ".mhd", ".dcm", ".DCM", ".jpg", ".png", 'gipl.gz']]:
+            input_files.append(file)
+    
+    for i in range(len(input_files)):
+        input_file,input_json_file = input_files[i],input_json_files[i]
+
+        
+        print("Working on scan {} with lm {}".format(os.path.basename(input_file),os.path.basename(input_json_file)))
+        tic = time.time()
+        output,source_transformed = ICP(input_file,input_json_file,gold_file,gold_json_file,nb_lmrk)
+        
+        WriteJsonLandmarks(source_transformed, input_json_file,output_file=os.path.join(out_dir,os.path.basename(input_json_file).split('.mrk.json')[0]+'_Or.mrk.json'))
+
+        file_outpath = os.path.join(out_dir,os.path.basename(input_file).split('.')[0]+'_Or.nii.gz')
+        sitk.WriteImage(output, file_outpath)
+        #file_size = os.path.getsize(file_outpath)
+        print("Done in {:.2f} seconds".format(time.time()-tic))
+        print("="*70)
+        
+    
 if __name__ == '__main__':
-    for num in range(7, 20):
-        num
-        if num < 10:
-            num = "000" + str(num)
-        elif num < 100:
-            num = "00" + str(num)
-        elif num < 1000:
-            num = "0" + str(num)
-
-        if platform.system() == "Darwin":
-            input_file = '/Users/luciacev-admin/Desktop/Luc_Anchling/Projects/ASO_CBCT/data/IC_0086.nii.gz'
-            input_json_file = '/Users/luciacev-admin/Desktop/Luc_Anchling/Projects/ASO_CBCT/data/IC_0086.mrk.json'
-            gold_file = '/Users/luciacev-admin/Desktop/Luc_Anchling/Projects/ASO_CBCT/data/MAMP_0002_Or_T1.nii.gz'
-            gold_json_file = '/Users/luciacev-admin/Desktop/Luc_Anchling/Projects/ASO_CBCT/data/MAMP_02_T1.mrk.json'
-        elif platform.system() == "Linux":
-            input_file = '/home/luciacev/Desktop/Luc_Anchling/DATA/ASO_CBCT/Anonymized/IC_'+num+'.nii.gz'
-            shutil.copy(input_file, 'data/output/test/'+str(num)+'_input.nii.gz')
-            input_json_file = '/home/luciacev/Desktop/Luc_Anchling/DATA/ASO_CBCT/Anonymized/Landmarks/IC_'+num+'.mrk.json'
-            gold_json_file = '/home/luciacev/Desktop/Luc_Anchling/Projects/ASO_CBCT/data/Gold_Standard/GOLD_MAMP_02_T1.mrk.json'
-            gold_file = '/home/luciacev/Desktop/Luc_Anchling/Projects/ASO_CBCT/data/Gold_Standard/GOLD_MAMP_0002_Or_T1.nii.gz'
-
-        print('IC_'+num+'.nii.gz')
-        main(input_file, input_json_file, gold_json_file, gold_file,num)
-        print('='*70)
-        # np.save('cache/sourcedata.npy', np.array(LoadImage(input_file)))
-        # np.save('cache/targetdata.npy', np.array(LoadImage(gold_file)))
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--data_dir',help='directory where json files to merge are',type=str,required=True)
+    parser.add_argument('--gold_dir',help='directory where json files to merge are',type=str,default='/home/luciacev/Desktop/Luc_Anchling/Projects/ASO_CBCT/data/Gold_Standard/')
+    parser.add_argument('--nb_lmrk',help='Number of landmarks used to the ICP',type=int,default=7)
+    parser.add_argument('--out_dir',help='directory where json files to merge are',type=str,default = os.path.join(parser.parse_args().data_dir,'Output'))
+    
+    args = parser.parse_args()
+    main(args)

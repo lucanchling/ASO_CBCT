@@ -6,7 +6,7 @@ import pytorch_lightning as pl
 # Different Network
 
 class DenseNet(pl.LightningModule):
-    def __init__(self, lr):
+    def __init__(self, lr=1e-4):
         super().__init__()
         self.lr = lr
         self.net = DenseNet121(spatial_dims=3, in_channels=1, out_channels=3)
