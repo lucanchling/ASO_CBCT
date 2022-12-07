@@ -34,7 +34,8 @@ def main(args):
 
     for file in tqdm(files,total=len(files)):
         outpath = os.path.join(out_dir,os.path.basename(file))
-        CenterImage(file,outpath)
+        if not os.path.exists(outpath):
+            CenterImage(file,outpath)
     
 
 
