@@ -11,6 +11,7 @@ import glob
 from icecream import ic
 import argparse
 from tqdm import tqdm
+import shutil
 '''
 8888888  .d8888b.  8888888b.      
   888   d88P  Y88b 888   Y88b         
@@ -203,15 +204,17 @@ def InitICP(source,target,render=False, Print=False, BestLMList=None, search=Fal
 888       888 d88P     888 8888888 888    Y888
 '''
 
-def ICP(input_file,input_json_file,gold_file,gold_json_file,nb_lmrk):
+def ICP(input_file,input_json_file,gold_file,gold_json_file,list_landmark):
     
     # Read input files
     input_image = sitk.ReadImage(input_file)
     # print('input spacing:',input_image.GetSpacing())
     gold_image = sitk.ReadImage(gold_file)
     # print('gold spacing:',gold_image.GetSpacing())
-    source = LoadJsonLandmarks(input_image, input_json_file)
-    target = LoadJsonLandmarks(gold_image, gold_json_file, gold=True)
+    source = LoadJsonLandmarks(input_image, input_json_file,list_landmark)
+    target = LoadJsonLandmarks(gold_image, gold_json_file,list_landmark, gold=True)
+
+    nb_lmrk = len(source.keys())
 
     # Make sure the landmarks are in the same order
     source = SortDict(source)
@@ -276,8 +279,8 @@ def ICP(input_file,input_json_file,gold_file,gold_json_file,nb_lmrk):
     # test(np.load('cache/source.npy', allow_pickle=True).item(),target,TransformMatrixFinalInv)
 
     # Resample the source image with the final transform 
-    print("Resampling...")
-    tic = time.time()
+    # print("Resampling...")
+    # tic = time.time()
     output = ResampleImage(input_image, gold_image, transform=TransformSITK)
     return output,source_transformed
     RenderWindow(Actors)
@@ -306,7 +309,7 @@ def FindOptimalLandmarks(source,target,nb_lmrk):
         if [firstpick,secondpick,thirdpick] not in LMlist:
             dist.append(d)
             LMlist.append([firstpick,secondpick,thirdpick])
-    print("Min Dist: {:.2f} | for LM: {} | len = {}".format(min(dist),LMlist[dist.index(min(dist))],len(dist)))
+    WriteTXT("Min Dist: {:.2f} | for LM: {} | len = {}".format(min(dist),LMlist[dist.index(min(dist))],len(dist)),'sumup.txt')
     return LMlist[dist.index(min(dist))]
 
 def WriteJsonLandmarks(landmarks, input_json_file ,output_file):
@@ -326,11 +329,12 @@ def WriteJsonLandmarks(landmarks, input_json_file ,output_file):
         pos = landmarks[tempData['markups'][0]['controlPoints'][i]['label']]
         # pos = (pos + abs(inorigin)) * inspacing
         tempData['markups'][0]['controlPoints'][i]['position'] = [pos[0],pos[1],pos[2]]
+    shutil.copy(input_json_file,output_file)
     with open(output_file, 'w') as outfile:
         json.dump(tempData, outfile, indent=4)
 
 def main(args):
-    input_dir, gold_dir, out_dir,nb_lmrk = args.data_dir,args.gold_dir,args.out_dir,args.nb_lmrk
+    input_dir, gold_dir, out_dir, list_landmark = args.data_dir,args.gold_dir,args.out_dir,args.list_landmark
     #ic(input_dir, gold_dir, out_dir,nb_lmrk)
 
     if not os.path.exists(out_dir):
@@ -352,30 +356,43 @@ def main(args):
         if os.path.isfile(file) and True in [ext in file for ext in [".nrrd", ".nii", ".nii.gz", ".mhd", ".dcm", ".DCM", ".jpg", ".png", 'gipl.gz']]:
             input_files.append(file)
     
-    for i in range(len(input_files)):
+    for i in tqdm(range(len(input_files)),total=len(input_files)):
         input_file,input_json_file = input_files[i],input_json_files[i]
 
         
-        print("Working on scan {} with lm {}".format(os.path.basename(input_file),os.path.basename(input_json_file)))
+        # print("Working on scan {} with lm {}".format(os.path.basename(input_file),os.path.basename(input_json_file)))
+        WriteTXT("Working on scan {} with lm {}".format(os.path.basename(input_file),os.path.basename(input_json_file)),'sumup.txt')
         tic = time.time()
-        output,source_transformed = ICP(input_file,input_json_file,gold_file,gold_json_file,nb_lmrk)
+        output,source_transformed = ICP(input_file,input_json_file,gold_file,gold_json_file,list_landmark)
         
-        WriteJsonLandmarks(source_transformed, input_json_file,output_file=os.path.join(out_dir,os.path.basename(input_json_file).split('.mrk.json')[0]+'_Or.mrk.json'))
+        # Write JSON
+        dir_json = os.path.dirname(input_json_file.replace(input_dir,out_dir))
+        if not os.path.exists(dir_json):
+            os.makedirs(dir_json)
+        
+        json_path = os.path.join(dir_json,os.path.basename(input_json_file).split('.mrk.json')[0]+'_Or.mrk.json')
 
-        file_outpath = os.path.join(out_dir,os.path.basename(input_file).split('.')[0]+'_Or.nii.gz')
+        WriteJsonLandmarks(source_transformed, input_json_file, output_file=json_path)
+
+        # Write Scan
+        dir_scan = os.path.dirname(input_file.replace(input_dir,out_dir))
+        if not os.path.exists(dir_scan):
+            os.makedirs(dir_scan)
+        
+        file_outpath = os.path.join(dir_scan,os.path.basename(input_file).split('.')[0]+'_Or.nii.gz')
         sitk.WriteImage(output, file_outpath)
         #file_size = os.path.getsize(file_outpath)
-        print("Done in {:.2f} seconds".format(time.time()-tic))
-        print("="*70)
+        WriteTXT("Done in {:.2f} seconds".format(time.time()-tic),'sumup.txt')
+        WriteTXT("="*70,'sumup.txt')
         
     
 if __name__ == '__main__':
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data_dir',help='directory where json files to merge are',type=str,required=True)
+    parser.add_argument('--data_dir',help='directory where json files to merge are',type=str,default='/home/luciacev/Desktop/Luc_Anchling/DATA/ASO_CBCT/TEST_Slicer/Data1/')
     parser.add_argument('--gold_dir',help='directory where json files to merge are',type=str,default='/home/luciacev/Desktop/Luc_Anchling/Projects/ASO_CBCT/data/Gold_Standard/')
-    parser.add_argument('--nb_lmrk',help='Number of landmarks used to the ICP',type=int,default=7)
-    parser.add_argument('--out_dir',help='directory where json files to merge are',type=str,default = os.path.join(parser.parse_args().data_dir,'Output'))
+    parser.add_argument('--list_landmark',help='List of landmarks used for the ICP',type=list,default=['IF','ANS','UR6O','UL6O','UR1O','PNS'])
+    parser.add_argument('--out_dir',help='directory where json files to merge are',type=str,default = '/home/luciacev/Desktop/Luc_Anchling/DATA/ASO_CBCT/TEST_Slicer/DataOr1/')#os.path.join(parser.parse_args().data_dir,'Output'))
     
     args = parser.parse_args()
     main(args)

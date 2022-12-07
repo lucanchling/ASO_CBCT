@@ -61,7 +61,7 @@ COLOR = {
 88888888  "Y88888P"  d88P     888 8888888P"  8888888888 888   T88b  "Y8888P"  
 '''
 
-def LoadJsonLandmarks(img, ldmk_path, gold=False):
+def LoadJsonLandmarks(img, ldmk_path, ldmk_list=None, gold=False):
     """
     Load landmarks from json file
     
@@ -102,6 +102,10 @@ def LoadJsonLandmarks(img, ldmk_path, gold=False):
         #lm_coord = ((lm_ph_coord - origin) / spacing).astype(np.float16)
         lm_coord = lm_ph_coord.astype(np.float64)
         landmarks[markup["label"]] = lm_coord
+    
+    if ldmk_list is not None:
+        return {key:landmarks[key] for key in ldmk_list}
+    
     return landmarks
 
 
@@ -212,7 +216,9 @@ def PrintMatrix(transform):
         print(transform.GetElement(i,0), transform.GetElement(i,1), transform.GetElement(i,2), transform.GetElement(i,3))
     print()
    
-
+def WriteTXT(text,file):
+    with open(file,'a') as f:
+        f.write(text+'\n')
 
 '''
 888     888 88888888888 888    d8P       .d8888b.  88888888888 888     888 8888888888 8888888888 
