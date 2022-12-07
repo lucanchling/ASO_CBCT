@@ -13,9 +13,7 @@ def CenterImage(scan_path, out_path):
     T = - np.array(img.TransformContinuousIndexToPhysicalPoint(np.array(img.GetSize())/2.0))
     translation = sitk.TranslationTransform(3)
     translation.SetOffset(T.tolist())
-    print("resample")
     img_trans = ResampleImage(img,translation.GetInverse())
-    print("Write")
     sitk.WriteImage(img_trans, out_path)
         
 
@@ -30,7 +28,7 @@ def main(args):
     
     if out_dir == '':
         out_dir = os.path.join(args.data_dir,'Output')
-        
+
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
 
