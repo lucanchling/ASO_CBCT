@@ -12,6 +12,8 @@ from icecream import ic
 import argparse
 from tqdm import tqdm
 import shutil
+import multiprocessing as mp
+
 '''
 8888888  .d8888b.  8888888b.      
   888   d88P  Y88b 888   Y88b         
@@ -222,8 +224,8 @@ def ICP(input_file,input_json_file,gold_file,gold_json_file,list_landmark):
     target = SortDict(target)
 
     # save the source and target landmarks arrays
-    np.save('cache/source.npy', source)
-    np.save('cache/target.npy', target)
+    # np.save('cache/source.npy', source)
+    # np.save('cache/target.npy', target)
 
     # load the source and target landmarks arrays
     # source = np.load('cache/source.npy', allow_pickle=True).item()
@@ -304,7 +306,6 @@ def FindOptimalLandmarks(source,target,nb_lmrk):
     dist, LMlist,ii = [],[],0
     while len(dist) < (nb_lmrk*(nb_lmrk-1)*(nb_lmrk-2)) and ii < 2500:
         ii+=1
-        source = np.load('cache/source.npy', allow_pickle=True).item()
         firstpick,secondpick,thirdpick, d = InitICP(source,target,render=False, Print=False, search=True)
         if [firstpick,secondpick,thirdpick] not in LMlist:
             dist.append(d)
@@ -333,30 +334,8 @@ def WriteJsonLandmarks(landmarks, input_json_file ,output_file):
     with open(output_file, 'w') as outfile:
         json.dump(tempData, outfile, indent=4)
 
-def main(args):
-    input_dir, gold_dir, out_dir, list_landmark = args.data_dir,args.gold_dir,args.out_dir,args.list_landmark
-    #ic(input_dir, gold_dir, out_dir,nb_lmrk)
-
-    if not os.path.exists(out_dir):
-        os.makedirs(out_dir)
-    
-    normpath = os.path.normpath("/".join([gold_dir, '**', '']))
-    for file in glob.iglob(normpath, recursive=True):
-        if os.path.isfile(file) and True in [ext in file for ext in ["json"]]:
-            gold_json_file = file
-        if os.path.isfile(file) and True in [ext in file for ext in [".nrrd", ".nii", ".nii.gz", ".mhd", ".dcm", ".DCM", ".jpg", ".png", 'gipl.gz']]:
-            gold_file = file
-    
-    input_files = []
-    input_json_files = []
-    normpath = os.path.normpath("/".join([input_dir, '**', '']))
-    for file in sorted(glob.iglob(normpath, recursive=True)):
-        if os.path.isfile(file) and True in [ext in file for ext in ["json"]]:
-            input_json_files.append(file)
-        if os.path.isfile(file) and True in [ext in file for ext in [".nrrd", ".nii", ".nii.gz", ".mhd", ".dcm", ".DCM", ".jpg", ".png", 'gipl.gz']]:
-            input_files.append(file)
-    
-    for i in tqdm(range(len(input_files)),total=len(input_files)):
+def RunBatch(input_dir, out_dir, list_landmark, gold_json_file, gold_file, input_files, input_json_files, shared_list, num_worker):
+    for i in range(len(input_files)):
         input_file,input_json_file = input_files[i],input_json_files[i]
 
         
@@ -381,18 +360,62 @@ def main(args):
         
         file_outpath = os.path.join(dir_scan,os.path.basename(input_file).split('.')[0]+'_Or.nii.gz')
         sitk.WriteImage(output, file_outpath)
+        shared_list[num_worker]+=1
         #file_size = os.path.getsize(file_outpath)
         WriteTXT("Done in {:.2f} seconds".format(time.time()-tic),'sumup.txt')
         WriteTXT("="*70,'sumup.txt')
+
+def main(args):
+    input_dir, gold_dir, out_dir, list_landmark, nb_worker = args.data_dir,args.gold_dir,args.out_dir,args.list_landmark, args.nb_proc
+    #ic(input_dir, gold_dir, out_dir,nb_lmrk)
+
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+    
+    normpath = os.path.normpath("/".join([gold_dir, '**', '']))
+    for file in glob.iglob(normpath, recursive=True):
+        if os.path.isfile(file) and True in [ext in file for ext in ["json"]]:
+            gold_json_file = file
+        if os.path.isfile(file) and True in [ext in file for ext in [".nrrd", ".nii", ".nii.gz", ".mhd", ".dcm", ".DCM", ".jpg", ".png", 'gipl.gz']]:
+            gold_file = file
+    
+    input_files = []
+    input_json_files = []
+    normpath = os.path.normpath("/".join([input_dir, '**', '']))
+    for file in sorted(glob.iglob(normpath, recursive=True)):
+        if os.path.isfile(file) and True in [ext in file for ext in ["json"]]:
+            input_json_files.append(file)
+        if os.path.isfile(file) and True in [ext in file for ext in [".nrrd", ".nii", ".nii.gz", ".mhd", ".dcm", ".DCM", ".jpg", ".png", 'gipl.gz']]:
+            input_files.append(file)
+
+    manager = mp.Manager()
+
+    nb_scan_done = manager.list([0 for i in range(nb_worker)])
+
+    check = mp.Process(target=CheckSharedList,args=(nb_scan_done,len(input_files)))
+    check.start()
+
+    scan_splits = np.array_split(input_files,nb_worker)
+    json_splits = np.array_split(input_json_files,nb_worker)
+
+    processes = [mp.Process(target=RunBatch,args=(input_dir, out_dir, list_landmark, gold_json_file, gold_file, scan_splits[i], json_splits[i],nb_scan_done,i)) for i in range(nb_worker)]
+
+    for proc in processes:
+        proc.start()
+    for proc in processes:
+        proc.join()
+    
+    check.join()
+    
         
     
 if __name__ == '__main__':
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data_dir',help='directory where json files to merge are',type=str,default='/home/luciacev/Desktop/Luc_Anchling/DATA/ASO_CBCT/TEST_Slicer/Data1/')
-    parser.add_argument('--gold_dir',help='directory where json files to merge are',type=str,default='/home/luciacev/Desktop/Luc_Anchling/Projects/ASO_CBCT/data/Gold_Standard/')
+    parser.add_argument('--data_dir',help='directory where json files to merge are',type=str,default='/home/luciacev/Desktop/Luc_Anchling/DATA/ASO_CBCT/NotOriented/SaraCentered/')
+    parser.add_argument('--gold_dir',help='directory where json files to merge are',type=str,default='/home/luciacev/Desktop/Luc_Anchling/DATA/ASO_CBCT/GOLD/Sara/')
     parser.add_argument('--list_landmark',help='List of landmarks used for the ICP',type=list,default=['IF','ANS','UR6O','UL6O','UR1O','PNS'])
-    parser.add_argument('--out_dir',help='directory where json files to merge are',type=str,default = '/home/luciacev/Desktop/Luc_Anchling/DATA/ASO_CBCT/TEST_Slicer/DataOr1/')#os.path.join(parser.parse_args().data_dir,'Output'))
-    
+    parser.add_argument('--out_dir',help='directory where json files to merge are',type=str,default = '/home/luciacev/Desktop/Luc_Anchling/DATA/ASO_CBCT/NotOriented/TEST/')#os.path.join(parser.parse_args().data_dir,'Output'))
+    parser.add_argument('--nb_proc',help='Number of processes to use for computation',type=int,default=5)
     args = parser.parse_args()
     main(args)

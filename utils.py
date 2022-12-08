@@ -21,7 +21,7 @@ from vtkmodules.vtkCommonDataModel import (
     vtkPolyData
 )
 from vtkmodules.vtkFiltersGeneral import vtkTransformPolyDataFilter
-
+import time
 
 cross = lambda x,y:np.cross(x,y) # to avoid unreachable code error on np.cross function
 
@@ -449,7 +449,7 @@ def ResampleImage(image, target, transform):
     resample.SetInterpolator(sitk.sitkLinear)
     orig_size = np.array(image.GetSize(), dtype=np.int)
     ratio = np.array(image.GetSpacing())/np.array(target.GetSpacing())
-    new_size = orig_size*(ratio)+0.5
+    new_size = orig_size#*(ratio)+0.5
     new_size = np.ceil(new_size).astype(np.int) #  Image dimensions are in integers
     new_size = [int(s) for s in new_size]
     resample.SetSize(new_size)
@@ -460,7 +460,7 @@ def ResampleImage(image, target, transform):
     # apply transform to the origin
     orig_center = np.array(image.TransformContinuousIndexToPhysicalPoint(np.array(image.GetSize())/2.0))
     new_center = np.array(target.TransformContinuousIndexToPhysicalPoint(np.array(target.GetSize())/2.0))
-    new_origin = orig_origin - orig_center + new_center
+    new_origin = orig_origin + new_center #- orig_center + new_center
     resample.SetOutputOrigin(new_origin)
     
     return resample.Execute(image)
@@ -642,3 +642,19 @@ def AngleAndAxisVectors(v1, v2):
     axis = cross(v1_u, v2_u)
     #axis = axis / np.linalg.norm(axis)
     return angle,axis
+
+"""
+888b     d888 888     888 888      88888888888 8888888 8888888b.  8888888b.   .d88888b.   .d8888b.  8888888888  .d8888b.   .d8888b.  
+8888b   d8888 888     888 888          888       888   888   Y88b 888   Y88b d88P" "Y88b d88P  Y88b 888        d88P  Y88b d88P  Y88b 
+88888b.d88888 888     888 888          888       888   888    888 888    888 888     888 888    888 888        Y88b.      Y88b.      
+888Y88888P888 888     888 888          888       888   888   d88P 888   d88P 888     888 888        8888888     "Y888b.    "Y888b.   
+888 Y888P 888 888     888 888          888       888   8888888P"  8888888P"  888     888 888        888            "Y88b.     "Y88b. 
+888  Y8P  888 888     888 888          888       888   888        888 T88b   888     888 888    888 888              "888       "888 
+888   "   888 Y88b. .d88P 888          888       888   888        888  T88b  Y88b. .d88P Y88b  d88P 888        Y88b  d88P Y88b  d88P 
+888       888  "Y88888P"  88888888     888     8888888 888        888   T88b  "Y88888P"   "Y8888P"  8888888888  "Y8888P"   "Y8888P"  
+"""
+
+def CheckSharedList(shared_list,maxvalue):
+    while True:
+        time.sleep(1)
+        print("{} / {} Done".format(sum(shared_list),maxvalue))
