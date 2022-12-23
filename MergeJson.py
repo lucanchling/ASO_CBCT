@@ -39,13 +39,14 @@ def main(args):
     # ==================== DELETE UNUSED JSON  ====================
     for key, files in dict_list.items():
         for file in files:
-            os.remove(file)    
+            if args.extension not in os.path.basename(file):
+                os.remove(file)    
 
 
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data_dir',help='directory where json files to merge are',type=str,required=True)
+    parser.add_argument('--data_dir',help='directory where json files to merge are',type=str,default='/home/luciacev/Desktop/Luc_Anchling/DATA/ASO_CBCT/TESTMERGED1')
     parser.add_argument('--extension',help='extension of new merged json files',type=str,default='MERGED')
     args = parser.parse_args()
 
