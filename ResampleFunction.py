@@ -49,7 +49,10 @@ def resample_fn(img, args):
         # print(output_spacing)
 
     if(args.spacing is not None):
-        output_spacing = args.spacing
+        if isinstance(args.spacing,float):
+            output_spacing = [args.spacing,args.spacing,args.spacing]
+        else:
+            output_spacing = args.spacing
 
     if(args.origin is not None):
         output_origin = args.origin
@@ -168,45 +171,41 @@ def main(args):
     
     for fobj in filenames:
 
-        try:
-            if "ref" in fobj and fobj["ref"] is not None:
-                ref = sitk.ReadImage(fobj["ref"])
-                args.size = ref.GetSize()
-                args.spacing = ref.GetSpacing()
-                args.origin = ref.GetOrigin()
+        if not os.path.exists(fobj["out"]):
 
-            if args.size is not None:
-                img = Resample(fobj["img"], args)
-            else:
-                img = sitk.ReadImage(fobj["img"])
-            # print(len(Spacing))
+            try:
+                if "ref" in fobj and fobj["ref"] is not None:
+                    ref = sitk.ReadImage(fobj["ref"])
+                    args.size = ref.GetSize()
+                    args.spacing = ref.GetSpacing()
+                    args.origin = ref.GetOrigin()
 
-            if args.spacing is not None:
-                print("Writing:", fobj["out"])
-                writer = sitk.ImageFileWriter()
-                writer.SetFileName(fobj["out"])
-                writer.UseCompressionOn()
-                writer.Execute(img)
+                if args.size is not None:
+                    img = Resample(fobj["img"], args)
+                else:
+                    img = sitk.ReadImage(fobj["img"])
+                # print(len(Spacing))
 
-            # print("Size of file: {:.2f}kB".format(os.path.getsize(fobj["out"], ) / 1024))
-            
-        except Exception as e:
-            print(e, file=sys.stderr)
-    print("For {} images:".format(len(filenames)))
-    print("Spacing: ", np.mean(Spacing, axis=0))
+                if args.spacing is not None:
+                    print("Writing:", fobj["out"])
+                    writer = sitk.ImageFileWriter()
+                    writer.SetFileName(fobj["out"])
+                    writer.UseCompressionOn()
+                    writer.Execute(img)
 
-    if args.landmarks:  
-        for i in range(len(FROM)):
-            shutil.copy(FROM[i], WHERE[i])
+                # print("Size of file: {:.2f}kB".format(os.path.getsize(fobj["out"], ) / 1024))
+                
+            except Exception as e:
+                print(e, file=sys.stderr)
 
-if __name__ == "__main__":
+def PreASOResample(data_dir,out_dir,scaling=1.45):
 
     parser = argparse.ArgumentParser(description='Resample an image', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     in_group = parser.add_mutually_exclusive_group(required=False)
 
     in_group.add_argument('--img', type=str, help='image to resample',default=None)
-    in_group.add_argument('--dir', type=str, help='Directory with image to resample',default='/home/lucia/Desktop/Luc/DATA/ASO/Test/')
+    in_group.add_argument('--dir', type=str, help='Directory with image to resample',default=data_dir)
     in_group.add_argument('--csv', type=str, help='CSV file with column img with paths to images to resample')
 
     csv_group = parser.add_argument_group('CSV extra parameters')
@@ -216,7 +215,7 @@ if __name__ == "__main__":
     transform_group = parser.add_argument_group('Transform parameters')
     transform_group.add_argument('--ref', type=str, help='Reference image. Use an image as reference for the resampling', default=None)
     transform_group.add_argument('--size', nargs="+", type=int, help='Output size, -1 to leave unchanged',default=[128,128,128])
-    transform_group.add_argument('--spacing', nargs="+", type=float, default=[1.45,1.45,1.45], help='Use a pre defined spacing')
+    transform_group.add_argument('--spacing', nargs="+", type=float, default=scaling, help='Use a pre defined spacing')
     transform_group.add_argument('--origin', nargs="+", type=float, default=None, help='Use a pre defined origin')
     transform_group.add_argument('--linear', type=bool, help='Use linear interpolation.', default=False)
     transform_group.add_argument('--center', type=bool, help='Center the image in the space', default=True)
@@ -231,8 +230,10 @@ if __name__ == "__main__":
 
     out_group = parser.add_argument_group('Ouput parameters')
     out_group.add_argument('--ow', type=int, help='Overwrite', default=1)
-    out_group.add_argument('--out', type=str, help='Output image/directory', default='/home/lucia/Desktop/Luc/DATA/ASO/Test/Output')
+    out_group.add_argument('--out', type=str, help='Output image/directory', default=out_dir)
     out_group.add_argument('--out_ext', type=str, help='Output extension type', default=None)
     out_group.add_argument('--landmarks', type=bool, help="Copy landmark files to output directory", default=False)
 
     args = parser.parse_args()
+
+    main(args)
