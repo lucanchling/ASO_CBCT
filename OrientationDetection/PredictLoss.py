@@ -53,12 +53,10 @@ def main(args):
     
     df = pd.DataFrame([ckpt.split('/')[-1] for ckpt in list_ckpt], columns=['checkpoint_path'])
     
-    angle = args.angle
     for angle in [3.14159265359, 1.57079632679, 1.0471975512, 0.78539816339, 0.52359877559, 0.39269908169, 0.26179938779, 0.0]:
         print("Generating for angle {:.3}".format(angle))
-        test_transform = None
-        if args.test_rot:
-            test_transform = RandomRotation3D(x_angle=angle, y_angle=angle, z_angle=angle)
+        
+        test_transform = RandomRotation3D(x_angle=angle, y_angle=angle, z_angle=angle)
         db = DataModuleClass(df_train, df_val, df_test, batch_size=1, train_transform=None, val_transform=None, test_transform=test_transform)
         
         db.setup('test')
@@ -116,10 +114,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_dir', type=str, default='/home/luciacev/Desktop/Luc_Anchling/DATA/ASO_CBCT/Oriented/LargeFOV_RESAMPLED/')
     parser.add_argument('--model_dir', type=str, default='/home/luciacev/Desktop/Luc_Anchling/Training_OR/NEW_LFOV/Models/')
-    parser.add_argument('--test_rot', type=bool, default=False)
-    parser.add_argument('--lr', type=float, default=1e-4)
-    parser.add_argument('--ckpt_path', type=str, default=None)
-    parser.add_argument('--angle', type=float, default=np.pi/2)
 
     args = parser.parse_args()
 

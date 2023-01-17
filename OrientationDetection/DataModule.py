@@ -7,6 +7,7 @@ import SimpleITK as sitk
 import os
 import pandas as pd
 
+from monai.transforms import RandHistogramShift
 
 class DataModuleClass(pl.LightningDataModule):
     # It is used to store information regarding batch size, transforms, etc. 
@@ -73,6 +74,11 @@ class DatasetClass(Dataset):
             scan, directionVector = self.transform(scan, directionVector)
 
         scan = torch.Tensor(sitk.GetArrayFromImage(scan)).unsqueeze(0)  # Conversion for Monai transforms
+        
+        # Histogram Transform
+        histTransform = RandHistogramShift(prob=0.7, num_control_points=5)
+
+        scan = histTransform(scan)
                 
         return scan, directionVector, scan_path.split('/')[-1]
 
@@ -97,7 +103,6 @@ class RandomRotation3D(pl.LightningDataModule):
 
         directionVector = np.matmul(directionVector, rotmatrix)
             
-        
         return scan, directionVector   
 
 import matplotlib.pyplot as plt
@@ -120,38 +125,31 @@ def gen_plot(direction, direction_hat, scan_path):
 
 if __name__ == "__main__":
 
-    data_dir="/home/luciacev/Desktop/Luc_Anchling/DATA/ALI_CBCT/RESAMPLED/"
+    data_dir="/home/lucia/Desktop/Luc/DATA/ASO/LARGEFOV_RESAMPLED/"
     
-    csv_path = os.path.join(data_dir, 'CSV/ALL')
+    csv_path = os.path.join(data_dir, 'CSV/')
 
     df_train = pd.read_csv(os.path.join(csv_path, 'train.csv'))
     df_val = pd.read_csv(os.path.join(csv_path, 'val.csv'))
     df_test = pd.read_csv(os.path.join(csv_path, 'test.csv'))
 
-    dm = DataModuleClass(df_train=df_train, df_val=df_val, df_test=df_test, batch_size=25, num_workers=4, train_transform=RandomRotation3D(), val_transform=None, test_transform=None)
+    dm = DataModuleClass(df_train=df_train, df_val=df_val, df_test=df_test, batch_size=25, num_workers=1, train_transform=RandomRotation3D(), val_transform=None, test_transform=None)
 
     dm.setup('fit')
 
     train_loader = dm.val_dataloader()
 
-    for batch in train_loader:
-        scan, directionVector, scan_name = batch
-        # scan_name = [scan_name for scan_name in scan_name]
-        # # find index of a specfic scan in the batch
-        # try:
-        #     idx = scan_name.index('40_T0_scan.nii.gz')
-        # except:
-        #     continue
-        # # write the image to a file
-        # img = sitk.GetImageFromArray(scan.squeeze(0).squeeze(0))
-        
-        # img.SetOrigin(origin.tolist()[0])
-        # img.SetSpacing(spacing.tolist()[0])
-        # if not os.path.exists(os.path.join(data_dir, 'TEST')):
-        #     os.makedirs(os.path.join(data_dir, 'TEST'))
-        # sitk.WriteImage(img, os.path.join(data_dir, 'TEST', scan_name[0]))
-        
-        
-        # gen_plot(np.array([0,0,1]), directionVector[0].numpy(), scan_name[0])
+    # for batch in train_loader:
+    #     scan, directionVector, scan_name = batch
+    #     idx = 5
 
-        # break
+    #     img = sitk.GetImageFromArray(scan[idx].squeeze(0).squeeze(0))
+        
+    #     img.SetOrigin(img.GetOrigin())
+    #     img.SetSpacing(img.GetSpacing())
+    #     # if not os.path.exists(os.path.join(data_dir, 'TEST')):
+    #     #     os.makedirs(os.path.join(data_dir, 'TEST'))
+    #     sitk.WriteImage(img, os.path.join('/home/lucia/Desktop/Luc/DATA/ASO/TEEEEEEESSSSSTTTT/', scan_name[idx].split('.')[0]+'_New.nii.gz'))
+        
+        
+    #     # break

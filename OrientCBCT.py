@@ -4,10 +4,12 @@ import argparse
 import torch
 from OrientationDetection.Net import DenseNet
 import SimpleITK as sitk
-import shutil
 import matplotlib.pyplot as plt
+import glob 
+import os
 
 from utils import RotationMatrix, AngleAndAxisVectors
+from ResampleFunction import PreASOResample
 
 cross = lambda x,y:np.cross(x,y)
 
@@ -69,88 +71,84 @@ def ResampleImage(image, transform):
     return resample.Execute(image)
 
 def main(args):
+
+    # temp_folder = '/home/lucia/Documents/TEMP/'
+    # PreASOResample(args.scan_folder,temp_folder)
+    
+    if not os.path.exists(args.output_folder):
+        os.makedirs(args.output_folder)       
+    
     CosSim = torch.nn.CosineSimilarity() # /!\ if loss < 0.1 dont apply rotation /!\
     Loss = lambda x,y: 1 - CosSim(torch.Tensor(x),torch.Tensor(y))
-    
+    device = 'cuda'
     model = DenseNet.load_from_checkpoint(args.checkpoint)
     # model.load_state_dict(torch.load(args.checkpoint)['state_dict'])
-    model.to('cuda')   
+    model.to(device)
     model.eval()
+    liste = []
     
-    num = args.num
-    if num<10:
-        num = '000'+str(num)
-    elif num<100:
-        num = '00'+str(num)
-    elif num<1000:
-        num = '0'+str(num)
-    if args.tilted:
-        scan_path = '/home/luciacev/Desktop/Luc_Anchling/DATA/ASO_CBCT/NotOriented/TEST/Out/tilted.nii.gz'
-    else:
-        scan_path = '/home/luciacev/Desktop/Luc_Anchling/DATA/ASO_CBCT/NotOriented/TEST/IC_'+num+'.nii.gz'
+    normpath = os.path.normpath("/".join([args.scan_folder,'**','']))
+    for file in (sorted(glob.iglob(normpath,recursive=True))):
+        if file.endswith('.nii.gz'):
 
-    # copy scan to output folder
-    shutil.copy(scan_path,'/home/luciacev/Desktop/Luc_Anchling/DATA/ASO_CBCT/NotOriented/TEST/Out/scan.nii.gz')
-    img = sitk.ReadImage(scan_path)
-    scan = torch.Tensor(sitk.GetArrayFromImage(img)).unsqueeze(0).unsqueeze(0)
+            img = sitk.ReadImage(os.path.join(args.scan_folder,os.path.basename(file)))
 
-    # Translation
-    T = - np.array(img.TransformContinuousIndexToPhysicalPoint(np.array(img.GetSize())/2.0))
-    translation = sitk.TranslationTransform(3)
-    translation.SetOffset(T.tolist())
-    
-    img_trans = ResampleImage(img,translation.GetInverse())
-    sitk.WriteImage(img_trans,'/home/luciacev/Desktop/Luc_Anchling/DATA/ASO_CBCT/NotOriented/TEST/Out/Centered.nii.gz')
-    
+            # Translation
+            T = - np.array(img.TransformContinuousIndexToPhysicalPoint(np.array(img.GetSize())/2.0))
+            translation = sitk.TranslationTransform(3)
+            translation.SetOffset(T.tolist())
+            # ic(os.path.basename(file),T)
+            # img_trans = ResampleImage(img,translation.GetInverse())
+            # sitk.WriteImage(img_trans,'/home/luciacev/Desktop/Luc_Anchling/DATA/ASO_CBCT/NotOriented/TEST/Out/Centered.nii.gz')
+            
+            goal = np.array((0.0,0.0,1.0))
 
+            img_temp = sitk.ReadImage(file)
+            array = sitk.GetArrayFromImage(img_temp)
+            scan = torch.Tensor(array).unsqueeze(0).unsqueeze(0)
+            with torch.no_grad():
+                directionVector_pred = model(scan.to(device))
 
-    goal = np.array((0.0,0.0,1.0))
+            directionVector_pred = directionVector_pred.cpu().numpy()
+            # ic(directionVector_pred)
+            #if Loss(directionVector_pred,goal) > 0.05:# and np.min(array) >= -1200 :
+            angle, axis = AngleAndAxisVectors(goal,directionVector_pred[0])
+            ic(os.path.basename(file),angle,Loss(directionVector_pred,goal))#,np.min(array),np.max(array))
+            Rotmatrix = RotationMatrix(axis,angle)
+            afterRot = np.matmul(directionVector_pred[0],Rotmatrix)
+            #gen_plot(directionVector_pred[0], goal, afterRot)
+            
+            rotation = sitk.Euler3DTransform()
+            rotation = sitk.VersorRigid3DTransform()
+            Rotmatrix = np.linalg.inv(Rotmatrix)
+            rotation.SetMatrix(Rotmatrix.flatten().tolist())
+            
+            TransformList = [translation,rotation]
+            
+            # Compute the final transform (inverse all the transforms)
+            TransformSITK = sitk.CompositeTransform(3)
+            for i in range(len(TransformList)-1,-1,-1):
+                TransformSITK.AddTransform(TransformList[i])
+            TransformSITK = TransformSITK.GetInverse()
+            
+            img_out = ResampleImage(img_temp,TransformSITK)
 
-    with torch.no_grad():
-        directionVector_pred = model(scan.to('cuda'))
+            outpath = os.path.join(args.output_folder,os.path.basename(file))
+            if not os.path.exists(outpath):
+                sitk.WriteImage(img_out,outpath)
 
-    directionVector_pred = directionVector_pred.cpu().numpy()
-    # ic(directionVector_pred)
-    # if Loss(directionVector_pred,goal) > 0.2:
-    ic(num,Loss(directionVector_pred,goal))
-    angle, axis = AngleAndAxisVectors(goal,directionVector_pred[0])
-    # ic(num,angle)
-    Rotmatrix = RotationMatrix(axis,angle)
-    # afterRot = np.matmul(Rotmatrix,directionVector_pred[0])
-    # gen_plot(directionVector_pred[0], goal, afterRot)
-    
-    # rotation = sitk.Euler3DTransform()
-    rotation = sitk.VersorRigid3DTransform()
-    Rotmatrix = np.linalg.inv(Rotmatrix)
-    rotation.SetMatrix(Rotmatrix.flatten().tolist())
-    
-    TransformList = [translation,rotation]
-    
-    # Compute the final transform (inverse all the transforms)
-    TransformSITK = sitk.CompositeTransform(3)
-    for i in range(len(TransformList)-1,-1,-1):
-        TransformSITK.AddTransform(TransformList[i])
-    TransformSITK = TransformSITK.GetInverse()
-    
-    img_out = ResampleImage(img,TransformSITK)
-    
-    sitk.WriteImage(img_out,'/home/luciacev/Desktop/Luc_Anchling/DATA/ASO_CBCT/NotOriented/TEST/Out/output.nii.gz')
-
+    '''
+    '''
+    #print(liste)
+    # print(np.mean(liste,axis=0))
 
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     
-    parser.add_argument('--lr', type=float, default=1e-4)
-    parser.add_argument('--checkpoint', type=str, default='/home/luciacev/Desktop/Luc_Anchling/Training_OR/NEW_LFOV/Models/lr1e-04_bs30_angle1.57.ckpt')
-    parser.add_argument('--angle', type=float, default=np.pi/2)
-    parser.add_argument('--num', type=int)
-    parser.add_argument('--tilted', type=bool,default=False)
-    parser.add_argument('--all',type=bool,default=False)
-
+    parser.add_argument('--scan_folder',default='/home/lucia/Desktop/Luc/DATA/ASO/Test/Tilted/')#'/home/lucia/Desktop/Luc/DATA/ASO/Test/')
+    parser.add_argument('--output_folder',default='/home/lucia/Desktop/Luc/DATA/ASO/Test/Output/')
+    parser.add_argument('--checkpoint',default='/home/lucia/Desktop/Luc/Models/ASO/LargeFOV_best.ckpt')
     args = parser.parse_args()
-    
-    # for i in range(1,146):
-    #     args.num = i
-    #     if i!=6:
+
     main(args)

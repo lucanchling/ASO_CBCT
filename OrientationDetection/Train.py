@@ -3,7 +3,7 @@ import pandas as pd
 import os
 from icecream import ic
 import argparse
-
+import shutil
 import torch
 
 from Net import DenseNet
@@ -36,7 +36,7 @@ def main(args):
 
     db = DataModuleClass(df_train, df_val, df_test, batch_size=args.batch_size, num_workers=args.num_workers, 
                         train_transform=RandomRotation3D(x_angle=args.angle, y_angle=args.angle, z_angle=args.angle), 
-                        val_transform=None,#RandomRotation3D(x_angle=np.pi/10, y_angle=np.pi/10, z_angle=np.pi/10), 
+                        val_transform=None, 
                         test_transform=None, mount_point=mount_point)
     
     model = DenseNet(lr=args.lr)
@@ -68,8 +68,8 @@ def main(args):
     if not os.path.exists(os.path.join(args.out, 'Models')):
         os.mkdir(os.path.join(args.out, 'Models'))
     
-    # save the best model to Models folder
-    os.rename(trainer.checkpoint_callback.best_model_path, os.path.join(args.out, 'Models', "lr"+"{:.0e}".format(args.lr)+"_bs"+str(args.batch_size)+"_angle"+str(round(args.angle,2))+".ckpt"))
+    # save the best model to Models folder 
+    shutil.copy(trainer.checkpoint_callback.best_model_path, os.path.join(args.out, 'Models', "lr"+"{:.0e}".format(args.lr)+"_bs"+str(args.batch_size)+"_angle"+str(round(args.angle,2))+".ckpt"))
     
     # rename tb dir Version_0 to lr=args.lr ; bs=args.batch_size
     os.rename(os.path.join(args.out, args.tb_dir,'version_0'), os.path.join(args.out,args.tb_dir, "lr="+"{:.0e}".format(args.lr)+" ; bs="+str(args.batch_size)+" ; angle="+str(round(args.angle,2))))
@@ -84,14 +84,14 @@ if __name__ == '__main__':
     parser.add_argument('--csv_test', help='CSV with Scan and Landmarks files', type=str, default='test.csv')      
     parser.add_argument('--lr', '--learning-rate', default=1e-4, type=float, help='Learning rate')
     parser.add_argument('--log_every_n_steps', help='Log every n steps', type=int, default=10)    
-    parser.add_argument('--epochs', help='Max number of epochs', type=int, default=200)    
+    parser.add_argument('--epochs', help='Max number of epochs', type=int, default=1000)    
     parser.add_argument('--model', help='Model to continue training', type=str, default= None)
     parser.add_argument('--out', help='Output', type=str, default="")
     parser.add_argument('--mount_point', help='Dataset mount directory', type=str, default="")
     parser.add_argument('--num_workers', help='Number of workers for loading', type=int, default=20)
     parser.add_argument('--batch_size', help='Batch size', type=int, default=30)
     parser.add_argument('--patience', help='Patience for early stopping', type=int, default=30)
-    parser.add_argument('--angle', help='Angle for random rotation', type=float, default=np.pi/2)
+    parser.add_argument('--angle', help='Angle for random rotation', type=float, default=np.pi)
 
     parser.add_argument('--tb_dir', help='Tensorboard output dir', type=str, default='tb_logs/')
 
