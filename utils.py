@@ -104,7 +104,47 @@ def LoadJsonLandmarks(img, ldmk_path, ldmk_list=None, gold=False):
         landmarks[markup["label"]] = lm_coord
     
     if ldmk_list is not None:
-        return {key:landmarks[key] for key in ldmk_list}
+        return {key:landmarks[key] for key in ldmk_list if key in landmarks.keys()}
+    
+    return landmarks
+
+def LoadOnlyLandmarks(ldmk_path, ldmk_list=None, gold=False):
+    """
+    Load landmarks from json file without using the img as input
+    
+    Parameters
+    ----------
+    ldmk_path : str
+        Path to the json file
+    gold : bool, optional
+        If True, load gold standard landmarks, by default False
+    
+    Returns
+    -------
+    dict
+        Dictionary of landmarks
+    
+    Raises
+    ------
+    ValueError
+        If the json file is not valid
+    """
+    with open(ldmk_path) as f:
+        data = json.load(f)
+    
+    markups = data["markups"][0]["controlPoints"]
+    
+    landmarks = {}
+    for markup in markups:
+        try:
+            lm_ph_coord = np.array([markup["position"][0],markup["position"][1],markup["position"][2]])
+            #lm_coord = ((lm_ph_coord - origin) / spacing).astype(np.float16)
+            lm_coord = lm_ph_coord.astype(np.float64)
+            landmarks[markup["label"]] = lm_coord
+        except:
+            continue
+    if ldmk_list is not None:
+        return {key:landmarks[key] for key in ldmk_list if key in landmarks.keys()}
     
     return landmarks
 
