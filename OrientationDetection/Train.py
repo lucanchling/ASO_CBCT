@@ -14,7 +14,7 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
 
-from CallBackClass import DirectionLogger
+# from CallBackClass import DirectionLogger
 
 def main(args):
     
@@ -39,14 +39,14 @@ def main(args):
                         val_transform=None, 
                         test_transform=None, mount_point=mount_point)
     
-    model = DenseNet(lr=args.lr)
+    model = DenseNet(lr=args.lr,DN_type=args.DN_type)
     
     early_stop_callback = EarlyStopping(monitor='val_loss', min_delta=0.00, patience=args.patience, verbose=True, mode="min")
 
     if args.tb_dir:
         logger = TensorBoardLogger(save_dir=os.path.join(args.out,args.tb_dir), name=None)
     
-    direction_logger = DirectionLogger(train_scan=df_train['scan_path'][0], val_scan=df_val['scan_path'][0])
+    #direction_logger = DirectionLogger(train_scan=df_train['scan_path'][0], val_scan=df_val['scan_path'][0])
     # ic(df_train['scan_path'][0])
     trainer = pl.Trainer(
         logger=logger,
@@ -69,10 +69,10 @@ def main(args):
         os.mkdir(os.path.join(args.out, 'Models'))
     
     # save the best model to Models folder 
-    shutil.copy(trainer.checkpoint_callback.best_model_path, os.path.join(args.out, 'Models', "lr"+"{:.0e}".format(args.lr)+"_bs"+str(args.batch_size)+"_angle"+str(round(args.angle,2))+".ckpt"))
+    os.rename(trainer.checkpoint_callback.best_model_path, os.path.join(args.out, 'Models', "DN_"+str(args.DN_type)+"_lr"+"{:.0e}".format(args.lr)+"_bs"+str(args.batch_size)+"_angle"+str(round(args.angle,2))+".ckpt"))
     
     # rename tb dir Version_0 to lr=args.lr ; bs=args.batch_size
-    os.rename(os.path.join(args.out, args.tb_dir,'version_0'), os.path.join(args.out,args.tb_dir, "lr="+"{:.0e}".format(args.lr)+" ; bs="+str(args.batch_size)+" ; angle="+str(round(args.angle,2))))
+    os.rename(os.path.join(args.out, args.tb_dir,'version_0'), os.path.join(args.out,args.tb_dir, "DN_"+str(args.DN_type)+"_lr="+"{:.0e}".format(args.lr)+" ; bs="+str(args.batch_size)+" ; angle="+str(round(args.angle,2))))
 
 
 if __name__ == '__main__':
@@ -92,6 +92,8 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', help='Batch size', type=int, default=30)
     parser.add_argument('--patience', help='Patience for early stopping', type=int, default=30)
     parser.add_argument('--angle', help='Angle for random rotation', type=float, default=np.pi)
+    parser.add_argument('--DN_type', help='type of DenseNet', type=int, default='121')
+    
 
     parser.add_argument('--tb_dir', help='Tensorboard output dir', type=str, default='tb_logs/')
 

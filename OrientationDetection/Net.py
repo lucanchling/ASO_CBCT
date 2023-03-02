@@ -1,15 +1,17 @@
 import torch.nn as nn
 import torch.optim as optim
-from monai.networks.nets.densenet import DenseNet121
+from monai.networks.nets.densenet import DenseNet121,DenseNet169,DenseNet201,DenseNet264
 import pytorch_lightning as pl
 
 # Different Network
 
 class DenseNet(pl.LightningModule):
-    def __init__(self, lr=1e-4):
+    def __init__(self, lr=1e-4, DN_type='121'):
         super().__init__()
         self.lr = lr
-        self.net = DenseNet121(spatial_dims=3, in_channels=1, out_channels=3)
+        types = ['121','169','201','264']
+        nets = [DenseNet121,DenseNet169,DenseNet201,DenseNet264]
+        self.net = nets[types.index(str(DN_type))](spatial_dims=3, in_channels=1, out_channels=3)
         self.CosSimLoss = nn.CosineSimilarity()
 
     def forward(self, x):

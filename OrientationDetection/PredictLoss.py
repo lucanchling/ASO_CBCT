@@ -76,7 +76,9 @@ def main(args):
 
             lr = float(checkpoint_path.split('_bs')[0].split('/')[-1].split('lr')[1])
 
-            model = DenseNet(lr)
+            DN_type = checkpoint_path.split('_lr')[0].split('/')[-1].split('DN_')[1]
+            
+            model = DenseNet(lr,DN_type)
 
             model.load_state_dict(torch.load(checkpoint_path)['state_dict'])
 

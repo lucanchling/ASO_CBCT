@@ -17,9 +17,9 @@ def gen_plot(a,b,c):
     """Create a pyplot plot and save to buffer."""
     plt.figure()
     ax = plt.axes(projection='3d')
-    ax.quiver(0, 0, 0, a[0], a[1], a[2], color='r', label='a')
-    ax.quiver(0, 0, 0, b[0], b[1], b[2], color='b', label='b')
-    ax.quiver(0, 0, 0, c[0], c[1], c[2], color='g', label='c')  
+    ax.quiver(0, 0, 0, a[0], a[1], a[2], color='b', label='Detected')
+    ax.quiver(0, 0, 0, b[0], b[1], b[2], color='r', label='Goal')
+    ax.quiver(0, 0, 0, c[0], c[1], c[2], color='g', label='Corrected')  
     ax.set_xlabel('X Label')
     ax.set_ylabel('Y Label')
     ax.set_zlabel('Z Label')
@@ -81,7 +81,13 @@ def main(args):
     CosSim = torch.nn.CosineSimilarity() # /!\ if loss < 0.1 dont apply rotation /!\
     Loss = lambda x,y: 1 - CosSim(torch.Tensor(x),torch.Tensor(y))
     device = 'cuda'
-    model = DenseNet.load_from_checkpoint(args.checkpoint)
+    
+    lr = float(args.checkpoint.split('_bs')[0].split('/')[-1].split('lr')[1])   
+    DN_type = args.checkpoint.split('_lr')[0].split('/')[-1].split('DN_')[1]
+
+    model = DenseNet(lr,DN_type)    
+    model.load_state_dict(torch.load(args.checkpoint)['state_dict'])
+    
     # model.load_state_dict(torch.load(args.checkpoint)['state_dict'])
     model.to(device)
     model.eval()
@@ -111,32 +117,33 @@ def main(args):
 
             directionVector_pred = directionVector_pred.cpu().numpy()
             # ic(directionVector_pred)
-            #if Loss(directionVector_pred,goal) > 0.05:# and np.min(array) >= -1200 :
+            # if Loss(directionVector_pred,goal) > 0.1:# and np.min(array) >= -1200 :
             angle, axis = AngleAndAxisVectors(goal,directionVector_pred[0])
-            ic(os.path.basename(file),angle,Loss(directionVector_pred,goal))#,np.min(array),np.max(array))
+            angle = angle# * 2.5
+            ic(os.path.basename(file),angle*180/np.pi,Loss(directionVector_pred,goal))#,np.min(array),np.max(array))
             Rotmatrix = RotationMatrix(axis,angle)
             afterRot = np.matmul(directionVector_pred[0],Rotmatrix)
-            #gen_plot(directionVector_pred[0], goal, afterRot)
+            # gen_plot(directionVector_pred[0], goal, afterRot)
             
-            rotation = sitk.Euler3DTransform()
-            rotation = sitk.VersorRigid3DTransform()
-            Rotmatrix = np.linalg.inv(Rotmatrix)
-            rotation.SetMatrix(Rotmatrix.flatten().tolist())
+            # rotation = sitk.Euler3DTransform()
+            # rotation = sitk.VersorRigid3DTransform()
+            # Rotmatrix = np.linalg.inv(Rotmatrix)
+            # rotation.SetMatrix(Rotmatrix.flatten().tolist())
             
-            TransformList = [translation,rotation]
+            # TransformList = [translation,rotation]
             
-            # Compute the final transform (inverse all the transforms)
-            TransformSITK = sitk.CompositeTransform(3)
-            for i in range(len(TransformList)-1,-1,-1):
-                TransformSITK.AddTransform(TransformList[i])
-            TransformSITK = TransformSITK.GetInverse()
+            # # Compute the final transform (inverse all the transforms)
+            # TransformSITK = sitk.CompositeTransform(3)
+            # for i in range(len(TransformList)-1,-1,-1):
+            #     TransformSITK.AddTransform(TransformList[i])
+            # TransformSITK = TransformSITK.GetInverse()
             
-            img_out = ResampleImage(img_temp,TransformSITK)
+            # img_out = ResampleImage(img_temp,TransformSITK)
 
-            outpath = os.path.join(args.output_folder,os.path.basename(file))
-            if not os.path.exists(outpath):
-                sitk.WriteImage(img_out,outpath)
-
+            # outpath = os.path.join(args.output_folder,os.path.basename(file))
+            # if not os.path.exists(outpath):
+            #     sitk.WriteImage(img_out,outpath)
+    
     '''
     '''
     #print(liste)
@@ -146,9 +153,9 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     
-    parser.add_argument('--scan_folder',default='/home/lucia/Desktop/Luc/DATA/ASO/Test/Tilted/')#'/home/lucia/Desktop/Luc/DATA/ASO/Test/')
-    parser.add_argument('--output_folder',default='/home/lucia/Desktop/Luc/DATA/ASO/Test/Output/')
-    parser.add_argument('--checkpoint',default='/home/lucia/Desktop/Luc/Models/ASO/LargeFOV_best.ckpt')
+    parser.add_argument('--scan_folder',default='/tmp/Slicer-lucia/__SlicerTemp__2023-03-01_17+55+11.960/')#'/home/lucia/Desktop/Luc/DATA/ASO/Test/')
+    parser.add_argument('--output_folder',default='/home/lucia/Desktop/Luc/DATA/ASO/ACCURACY/Head/ASOTESTOUTPUT/')
+    parser.add_argument('--checkpoint',default='/home/lucia/Desktop/Luc/Models/ASO_BIS/Auto_Or_Models/DN_169_lr1e-04_bs30_angle3.14.ckpt')
     args = parser.parse_args()
 
     main(args)
