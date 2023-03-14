@@ -1,9 +1,10 @@
 from glob import iglob 
 import os
-from icecream import ic
 from utils import LoadOnlyLandmarks
 import torch
 import numpy as np
+import pandas as pd
+import argparse
 
 def search(path,*args):
     """
@@ -110,28 +111,19 @@ def angles(v1,v2,type=None):
         print("pitch:",pitch)
         print("roll:",roll)
         print("yaw:",yaw)
-def OrientationError():
-    
-    ldmk_list = ['LOr','ROr','LPo','N','RPo','S']
-    
-    plane1 = ['LOr','ROr','LPo','RPo']
-    plane2 = ['Ba','N','S']
 
-    PLANE1_TEST = []
-    PLANE2_TEST = []
-    PLANE1_REF = []
-    PLANE2_REF = []
-    NAME = []
+def OrientationError(args,ldmk_list,plane1,plane2):
+    PLANE1_TEST,PLANE2_TEST,PLANE1_REF,PLANE2_REF,NAME,NB_LDMK = [],[],[],[],[],[]
 
-    test_json = search(test_dir,'json')['json']
-    ref_json = search(ref_dir,'json')['json']
+    test_json = search(args.test_dir,'json')['json']
+    ref_json = search(args.ref_dir,'json')['json']
     
     patients = GetPatients(test_json,ref_json)
 
-
+    df = pd.DataFrame([patient for patient,data in patients.items() if  "test" in data.keys() and "ref" in data.keys()], columns=['Patients'])
     for patient,data in patients.items():
 
-        if "test" in data.keys() and "ref" in data.keys() :#and patient == 'MAMP_0002_T2':
+        if "test" in data.keys() and "ref" in data.keys() :
             
             test = LoadOnlyLandmarks(data["test"],ldmk_list=ldmk_list)
             ref = LoadOnlyLandmarks(data["ref"],ldmk_list=ldmk_list)
@@ -142,22 +134,71 @@ def OrientationError():
             # print("Plane 2:")
             # angles(test2,ref2)
             # print("="*70)
-            PLANE1_TEST.append(test1),PLANE2_TEST.append(test2),PLANE1_REF.append(ref1),PLANE2_REF.append(ref2),NAME.append(patient)
+            PLANE1_TEST.append(test1),PLANE2_TEST.append(test2),PLANE1_REF.append(ref1),PLANE2_REF.append(ref2),NAME.append(patient),NB_LDMK.append(len(test))
 
     CosSim = torch.nn.CosineSimilarity() # /!\ if loss < 0.1 dont apply rotation /!\
-    Loss = lambda x,y: 1 - abs(CosSim(torch.Tensor(x),torch.Tensor(y)))
-    
+    Loss = lambda x,y: abs(CosSim(torch.Tensor(x),torch.Tensor(y)))
     plane1Loss = np.array(Loss(np.array(PLANE1_TEST),np.array(PLANE1_REF)))
     plane2Loss = np.array(Loss(np.array(PLANE2_TEST),np.array(PLANE2_REF)))
+    
+    degplane1 = np.arccos(plane1Loss)*180/np.pi
+    degplane2 = np.arccos(plane2Loss)*180/np.pi
+    
+    #df['Plane1'] = plane1Loss
+    df['Degre1'] = degplane1
+    #df['Plane2'] = plane2Loss
+    df['Degre2'] = degplane2
+    df['Nb Landmark'] = NB_LDMK
+
+    if not os.path.exists(args.csv_dir):
+        os.makedirs(args.csv_dir)
+
+    df.to_csv(args.csv_dir+args.csv_name.split('.')[0]+'.csv',index=False)    
+    
     print("="*70)
     print("For plane 1: ",np.mean(plane1Loss))
     print("For plane 2: ",np.mean(plane2Loss))
 
+def GetLandmarks(type_accuracy):
+    if type_accuracy == 'head':
+        ldmk_list = ['Ba','LOr','ROr','LPo','N','RPo','S']
+        plane1 = ['LOr','ROr','LPo','RPo']
+        plane2 = ['Ba','N','S']
+
+    if type_accuracy == 'max':
+        ldmk_list = ['ANS','PNS','IF','UR6O','UL6O','UR1O','UR6_UL6','UR1_UL1']
+        plane1 = ['UR6O','UL6O','UR1O']
+        plane2 = ['ANS','PNS','IF','UR6_UL6','UR1_UL1']
+
+    if type_accuracy == 'mand':
+        ldmk_list = ['LL6O','LR6O','LR1O','B','Pog','Me']
+        plane1 = []
+        plane2 = []
+
+    return ldmk_list,plane1,plane2
+
+    # if type_accuracy == 'maxillary':
+
+    # if type_accuracy == 'mandible':
+
+def main(args):
+    print("Test directory: ",args.test_dir)
+
+    ldmk_list,plane1,plane2 = GetLandmarks(args.type_acc)
+
+    OrientationError(args,ldmk_list,plane1,plane2)
+
 if __name__ == '__main__':
     
-    test_dir = '/home/lucia/Desktop/Luc/DATA/ASO/ACCURACY/ASO_Output/'
-    ref_dir = '/home/lucia/Desktop/Luc/DATA/ASO/ACCURACY/Felicia_Oriented/'
+    parser = argparse.ArgumentParser()
+    
+    parser.add_argument('--test_dir', type=str, default='/home/lucia/Desktop/Luc/DATA/ASO/ACCURACY/Head/Felicia_BAMP_ASO_OUTPUT/', help='Path to the test directory')
+    parser.add_argument('--ref_dir', type=str, default='/home/lucia/Desktop/Luc/DATA/ASO/ACCURACY/Head/Felicia_BAMP_Oriented/', help='Path to the reference directory')
+    parser.add_argument('--csv_name', type=str, default='Accuracy', help='Name of the csv file')
+    parser.add_argument('--csv_dir', type=str, default='./', help='Path to the csv directory')
+    parser.add_argument('--type_acc', type=str, help='Type of accuracy to compute', default='head')
 
-    # MSELoss(test_dir,ref_dir)
-
-    OrientationError()
+    args = parser.parse_args()
+    
+    main(args)
+    
