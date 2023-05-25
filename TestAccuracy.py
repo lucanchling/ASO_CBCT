@@ -86,12 +86,16 @@ def normal_vector(data, plane_list):
             points.append(data[lm])
         except KeyError:
             continue
-    X = np.array(points)
+    try:    
+        X = np.array(points)
+        
+        U,S,V = np.linalg.svd(X)
+        
+        return V[-1]
     
-    U,S,V = np.linalg.svd(X)
+    except:
+        return np.array([0,0,0])
     
-    return V[-1]
-
 def angles(v1,v2,type=None):
     dot = np.dot(v1,v2)
     cross = np.cross(v1,v2)
@@ -113,6 +117,8 @@ def angles(v1,v2,type=None):
         print("yaw:",yaw)
 
 def OrientationError(args,ldmk_list,plane1,plane2):
+    CosSim = torch.nn.CosineSimilarity() # /!\ if loss < 0.1 dont apply rotation /!\
+    Loss = lambda x,y: abs(CosSim(torch.Tensor(x),torch.Tensor(y)))
     PLANE1_TEST,PLANE2_TEST,PLANE1_REF,PLANE2_REF,NAME,NB_LDMK = [],[],[],[],[],[]
 
     test_json = search(args.test_dir,'json')['json']
@@ -122,7 +128,6 @@ def OrientationError(args,ldmk_list,plane1,plane2):
 
     df = pd.DataFrame([patient for patient,data in patients.items() if  "test" in data.keys() and "ref" in data.keys()], columns=['Patients'])
     for patient,data in patients.items():
-
         if "test" in data.keys() and "ref" in data.keys() :
             
             test = LoadOnlyLandmarks(data["test"],ldmk_list=ldmk_list)
@@ -136,8 +141,6 @@ def OrientationError(args,ldmk_list,plane1,plane2):
             # print("="*70)
             PLANE1_TEST.append(test1),PLANE2_TEST.append(test2),PLANE1_REF.append(ref1),PLANE2_REF.append(ref2),NAME.append(patient),NB_LDMK.append(len(test))
 
-    CosSim = torch.nn.CosineSimilarity() # /!\ if loss < 0.1 dont apply rotation /!\
-    Loss = lambda x,y: abs(CosSim(torch.Tensor(x),torch.Tensor(y)))
     plane1Loss = np.array(Loss(np.array(PLANE1_TEST),np.array(PLANE1_REF)))
     plane2Loss = np.array(Loss(np.array(PLANE2_TEST),np.array(PLANE2_REF)))
     
@@ -153,11 +156,11 @@ def OrientationError(args,ldmk_list,plane1,plane2):
     if not os.path.exists(args.csv_dir):
         os.makedirs(args.csv_dir)
 
-    df.to_csv(args.csv_dir+args.csv_name.split('.')[0]+'.csv',index=False)    
+    df.to_csv(os.path.join(args.csv_dir,args.csv_name.split('.')[0]+'.csv'),index=False)    
     
     print("="*70)
-    print("For plane 1: ",np.mean(plane1Loss))
-    print("For plane 2: ",np.mean(plane2Loss))
+    print("Plane 1 Accuracy: {}% (Landmarks: {})".format(round(np.mean(plane1Loss)*100,2),plane1))
+    print("Plane 2 Accuracy: {}% (Landmarks: {})".format(round(np.mean(plane2Loss)*100,2),plane2))
 
 def GetLandmarks(type_accuracy):
     if type_accuracy == 'head':
@@ -166,9 +169,9 @@ def GetLandmarks(type_accuracy):
         plane2 = ['Ba','N','S']
 
     if type_accuracy == 'max':
-        ldmk_list = ['ANS','PNS','IF','UR6O','UL6O','UR1O','UR6_UL6','UR1_UL1']
+        ldmk_list = ['ANS','PNS','IF','UR6O','UL6O','UR1O','Mid_UR6O_UL6O','Mid_UR1O_UL1O']
         plane1 = ['UR6O','UL6O','UR1O']
-        plane2 = ['ANS','PNS','IF','UR6_UL6','UR1_UL1']
+        plane2 = ['ANS','PNS','IF','Mid_UR6O_UL6O','Mid_UR1O_UL1O']
 
     if type_accuracy == 'mand':
         ldmk_list = ['LL6O','LR6O','LR1O','B','Pog','Me']
@@ -192,11 +195,11 @@ if __name__ == '__main__':
     
     parser = argparse.ArgumentParser()
     
-    parser.add_argument('--test_dir', type=str, default='/home/lucia/Desktop/Luc/DATA/ASO/ACCURACY/Head/Felicia_BAMP_ASO_OUTPUT/', help='Path to the test directory')
-    parser.add_argument('--ref_dir', type=str, default='/home/lucia/Desktop/Luc/DATA/ASO/ACCURACY/Head/Felicia_BAMP_Oriented/', help='Path to the reference directory')
+    parser.add_argument('--test_dir', type=str, default='/home/luciacev/Desktop/Luc/DATA/ASO/Accuracy/Maxillary/ASO_OUTPUT/OLD', help='Path to the test directory')
+    parser.add_argument('--ref_dir', type=str, default='/home/luciacev/Desktop/Luc/DATA/ASO/Accuracy/Maxillary/Oriented', help='Path to the reference directory')
     parser.add_argument('--csv_name', type=str, default='Accuracy', help='Name of the csv file')
     parser.add_argument('--csv_dir', type=str, default='./', help='Path to the csv directory')
-    parser.add_argument('--type_acc', type=str, help='Type of accuracy to compute', default='head')
+    parser.add_argument('--type_acc', type=str, help='Type of accuracy to compute', default='max')
 
     args = parser.parse_args()
     
